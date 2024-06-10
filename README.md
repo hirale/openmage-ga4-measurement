@@ -5,15 +5,13 @@ A module for integrating with the [Google Analytics 4 Measurement Protocol API](
 This module can work with Mage_GoogleAnalytics module. 
 For duplicate key events, you can consult this page [https://support.google.com/analytics/answer/12313109?hl=en](https://support.google.com/analytics/answer/12313109?hl=en)
 
-# Attention: this module reuses added and removed items of module Mage_GoogleAnalytics, it will apply a patch for core module. Check patch here [https://github.com/hirale/magento-lts/pull/1/files](https://github.com/hirale/magento-lts/pull/1/files)
-
 
 ## Install
 
 ### Install with [Magento Composer Installer](https://github.com/Cotya/magento-composer-installer)
 
 ```bash
-composer require hirale/openmage-ga4-measurement:dev-master
+composer require hirale/openmage-ga4-measurement
 ```
 
 ## Usage
@@ -24,6 +22,17 @@ composer require hirale/openmage-ga4-measurement:dev-master
 2. Get measurement ID associated with a stream, found in the Google Analytics UI under `Admin > Data Streams > choose your stream > Measurement ID`.
 3. Go to openmage system config `System > Configuration > Sales > Google API > Measurement Protocol`. Insert the parameters from step 1 and 2, save.
 
+
+### Debug
+
+Enable debug mode in the openmage system config `System > Configuration > Sales > Google API > Measurement Protocol`.
+
+```log
+2024-06-10T18:28:24+00:00 DEBUG (7): {"client_id":"2131884568.1715846325","timestamp_micros":1718044092903759,"non_personalized_ads":false,"user_id":"140","events":[{"name":"page_view","params":{"engagement_time_msec":1,"page_location":"https://example.com/customer/account/index/","page_title":"Create New Customer Account"}}]}
+2024-06-10T18:28:24+00:00 DEBUG (7): {
+  "validationMessages": [ ]
+}
+```
 
 ## License
 
