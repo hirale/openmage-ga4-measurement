@@ -5,6 +5,23 @@ A module for integrating with the [Google Analytics 4 Measurement Protocol API](
 This module can work with Mage_GoogleAnalytics module. 
 For duplicate key events, you can consult this page [https://support.google.com/analytics/answer/12313109?hl=en](https://support.google.com/analytics/answer/12313109?hl=en)
 
+## Supported Events
+
+ - `page_view`
+ - `begin_checkout`
+ - `add_to_cart`
+ - `remove_from_cart`
+ - `view_cart`
+ - `purchase`
+ - `view_item`
+ - `view_item_list`
+ - `add_to_wishlist`
+ - `sign_up`
+ - `login`
+ - `search`
+ - `view_search_results`
+
+You can check more events in the [events section](https://developers.google.com/analytics/devguides/collection/protocol/ga4/reference/events).
 
 ## Install
 
@@ -17,6 +34,9 @@ composer require hirale/openmage-ga4-measurement
 ## Usage
 
 ### Setup
+
+> [!NOTE]
+> This module depends on [`openmage-redis-queue`](https://github.com/hirale/openmage-redis-queue). It has been added to composer requirements.
 
 1. Generate an API SECRET in the Google Analytics UI. To create a new secret, navigate to `Admin > Data Streams > choose your stream > Measurement Protocol > Create`.
 2. Get measurement ID associated with a stream, found in the Google Analytics UI under `Admin > Data Streams > choose your stream > Measurement ID`.
