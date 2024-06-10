@@ -1,0 +1,38 @@
+{
+    "name": "hirale/openmage-ga4-measurement",
+    "description": "A module for integrating with the Google Analytics 4 Measurement Protocol API",
+    "type": "magento-module",
+    "license": "OSL-3.0",
+    "keywords": [
+        "magento",
+        "magento1",
+        "openmage"
+    ],
+    "require": {
+        "php": "^8.0",
+        "magento-hackathon/magento-composer-installer": "*",
+        "hirale/openmage-redis-queue": "*"
+    },
+    "authors": [
+        {
+            "name": "Hirale"
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "cweagans/composer-patches": true
+        }
+    },
+    "extra": {
+        "map": [
+            [
+                "src/app/etc/modules/Hirale_GAMeasurementProtocol.xml",
+                "app/etc/modules/Hirale_GAMeasurementProtocol.xml"
+            ],
+            [
+                "src/app/code/community/Hirale/GAMeasurementProtocol",
+                "app/code/community/Hirale/GAMeasurementProtocol"
+            ]
+        ]
+    }
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<config>
+    <modules>
+        <Hirale_GAMeasurementProtocol>
+            <active>true</active>
+            <codePool>community</codePool>
+            <depends>
+                <Mage_GoogleAnalytics />
+                <Hirale_Queue />
+            </depends>
+        </Hirale_GAMeasurementProtocol>
+    </modules>
+</config>

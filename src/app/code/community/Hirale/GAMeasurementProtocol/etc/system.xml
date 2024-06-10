@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<config>
+    <sections>
+        <google>
+            <groups>
+                <measurement translate="label">
+                    <label>Measurement Protocol</label>
+                    <sort_order>10</sort_order>
+                    <show_in_default>1 </show_in_default>
+                    <show_in_website>1 </show_in_website>
+                    <show_in_store>1</show_in_store>
+                    <fields>
+                        <enabled translate="label comment">
+                            <label>Enable</label>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1 </show_in_default>
+                            <show_in_website>1 </show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </enabled>
+                        <measurement_id translate="label">
+                            <label>Measurement ID</label>
+                            <frontend_type>text</frontend_type>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1 </show_in_default>
+                            <show_in_website>1 </show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <depends>
+                                <enabled>1</enabled>
+                            </depends>
+                        </measurement_id>
+                        <api_secret translate="label">
+                            <label>API Secret</label>
+                            <frontend_type>text</frontend_type>
+                            <sort_order>30</sort_order>
+                            <show_in_default>1 </show_in_default>
+                            <show_in_website>1 </show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <depends>
+                                <enabled>1</enabled>
+                            </depends>
+                        </api_secret>
+                        <debug_mode translate="label">
+                            <label>Debug Mode</label>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <sort_order>40</sort_order>
+                            <show_in_default>1 </show_in_default>
+                            <show_in_website>1 </show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <depends>
+                                <enabled>1</enabled>
+                            </depends>
+                            <comment>When in debug mode, all requests will be logged and sent to debug endpoint, check system.log for more details.</comment>
+                        </debug_mode>
+                    </fields>
+                </measurement>
+            </groups>
+        </google>
+    </sections>
+</config>
