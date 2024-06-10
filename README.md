@@ -25,6 +25,9 @@ You can check more events in the [events section](https://developers.google.com/
 
 ## Install
 
+> [!NOTE]
+> This module depends on [`openmage-redis-queue`](https://github.com/hirale/openmage-redis-queue). It has been added to composer requirements.
+
 ### Install with [Magento Composer Installer](https://github.com/Cotya/magento-composer-installer)
 
 ```bash
@@ -34,9 +37,6 @@ composer require hirale/openmage-ga4-measurement
 ## Usage
 
 ### Setup
-
-> [!NOTE]
-> This module depends on [`openmage-redis-queue`](https://github.com/hirale/openmage-redis-queue). It has been added to composer requirements.
 
 1. Generate an API SECRET in the Google Analytics UI. To create a new secret, navigate to `Admin > Data Streams > choose your stream > Measurement Protocol > Create`.
 2. Get measurement ID associated with a stream, found in the Google Analytics UI under `Admin > Data Streams > choose your stream > Measurement ID`.
