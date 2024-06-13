@@ -2,7 +2,7 @@
 class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 {
     const GA4_MEASUREMENT_PROTOCOL_URL = 'https://www.google-analytics.com/mp/collect';
-    const GA4_MEASUREMENT_PROTOCOL_DEBUG_URL = 'https://www.google-analytics.com/debug/mp/collect';
+    const GTAG_URL = 'https://www.googletagmanager.com/gtag/destination';
     protected $_isMeasurementEnabled = null;
     protected $_measurementId = null;
     protected $_apiSecret = null;
@@ -26,7 +26,7 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 
     public function getMeasurementProtocolUrl()
     {
-        return $this->isDebugMode() ? self::GA4_MEASUREMENT_PROTOCOL_DEBUG_URL : self::GA4_MEASUREMENT_PROTOCOL_URL;
+        return self::GA4_MEASUREMENT_PROTOCOL_URL;
     }
 
 
@@ -49,16 +49,20 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 
     public function getClientId()
     {
-
-        if (isset($_COOKIE['_ga'])) {
-            $ga = explode('.', $_COOKIE['_ga']);
-            $clientId = $ga[2] . '.' . $ga[3];
-        } else {
-            $randomNumber = mt_rand(1000000000, 9999999999);
-            $timestamp = time();
-            $clientId = $randomNumber . '.' . $timestamp;
+        $session = Mage::getSingleton('core/session');
+        $clientId = $session->getData('ga_client_id');
+        if (!$clientId) {
+            if (isset($_COOKIE['_ga'])) {
+                $ga = explode('.', $_COOKIE['_ga']);
+                $clientId = $ga[2] . '.' . $ga[3];
+            } else {
+                $randomNumber = mt_rand(1000000000, 9999999999);
+                $timestamp = time();
+                $clientId = $randomNumber . '.' . $timestamp;
+            }
+            $session->setData('ga_client_id', $clientId);
         }
-        
+
         return $clientId;
     }
 

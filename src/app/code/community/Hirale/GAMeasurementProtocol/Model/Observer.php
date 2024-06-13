@@ -8,6 +8,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     protected $baseEventData;
 
 
+
     public function __construct()
     {
         $this->helper = Mage::helper('gameasurementprotocol');
@@ -15,17 +16,32 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         $this->queue = Mage::getModel('hirale_queue/task');
     }
 
+    public function generateClientId(Varien_Event_Observer $observer)
+    {
+        $this->helper->getClientId();
+    }
+
+
     /**
      * Add a task to the queue for processing by the Hirale_GAMeasurementProtocol_Model_Api class.
      *
-     * @param array $event The name of the event to be processed.
+     * @param array $events The name of the event to be processed.
      */
-    protected function addToQueue($event)
+    protected function addToQueue($events)
     {
         try {
+            foreach ($events['events'] as &$event) {
+                $params = &$event['params'];
+                if ($this->helper->isDebugMode()) {
+                    $params['debug_mode'] = true;
+                }
+                $params['user_agent'] = Mage::helper('core/http')->getHttpUserAgent();
+                $params['platform'] = Mage::helper('core/string')->cleanString(Mage::app()->getRequest()->getServer('HTTP_SEC_CH_UA_PLATFORM'));
+            }
+
             $this->queue->addTask(
                 'Hirale_GAMeasurementProtocol_Model_Api',
-                compact('event')
+                $events
             );
         } catch (Exception $e) {
             Mage::logException($e);
@@ -37,9 +53,13 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         if (!$this->baseEventData) {
             $this->baseEventData = [
                 'client_id' => $this->helper->getClientId(),
-                "timestamp_micros" => floor(microtime(true) * 1000000),
-                "non_personalized_ads" => false
+                'timestamp_micros' => floor(microtime(true) * 1000000),
+                'non_personalized_ads' => true
             ];
+            if (Mage::getSingleton('customer/session')->isLoggedIn()) {
+                $customer = Mage::getSingleton('customer/session')->getCustomer();
+                $this->baseEventData['user_id'] = $customer->getId();
+            }
         }
         return $this->baseEventData;
     }
@@ -122,7 +142,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             $eventData = $this->getBaseEventData();
             $value = 0;
             $currency = Mage::app()->getStore()->getBaseCurrencyCode();
-            $newItems =[];
+            $newItems = [];
             foreach ($items as $item) {
                 $_product = $item->getProduct();
                 $_price = $_product->getFinalPrice();
@@ -175,11 +195,6 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         $request = $observer->getEvent()->getApp()->getRequest();
         $route = $request->getModuleName() . '_' . $request->getControllerName() . '_' . $request->getActionName();
         $eventData = $this->getBaseEventData();
-
-        if (Mage::getSingleton('customer/session')->isLoggedIn()) {
-            $customer = Mage::getSingleton('customer/session')->getCustomer();
-            $eventData['user_id'] = $customer->getId();
-        }
 
         $events = [];
         switch ($route) {

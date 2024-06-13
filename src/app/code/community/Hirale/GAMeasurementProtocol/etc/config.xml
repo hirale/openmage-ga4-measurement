@@ -19,6 +19,15 @@
     </global>
     <frontend>
         <events>
+            <controller_front_send_response_after>
+                <observers>
+                    <gameasurementprotocol_controller_front_send_response_after>
+                        <type>singleton</type>
+                        <class>gameasurementprotocol/observer</class>
+                        <method>generateClientId</method>
+                    </gameasurementprotocol_controller_front_send_response_after>
+                </observers>
+            </controller_front_send_response_after>
             <sales_quote_item_save_after>
                 <observers>
                     <gameasurementprotocol_sales_quote_item_save_after>

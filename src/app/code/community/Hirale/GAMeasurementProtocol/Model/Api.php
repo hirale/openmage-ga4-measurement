@@ -10,7 +10,7 @@ class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskH
 
     public function handle($data)
     {
-        $event = $data['data']['event'];
+        $event = $data['data'];
         $url = $this->helper->getMeasurementProtocolUrl();
         $measurementId = $this->helper->getMeasurementId();
         $apiSecret = $this->helper->getApiSecret();
@@ -26,10 +26,9 @@ class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskH
         curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
-        $response = curl_exec($ch);
+        curl_exec($ch);
         if ($this->helper->isDebugMode()) {
             Mage::log($payload);
-            Mage::log($response);
         }
         if (curl_errno($ch)) {
             throw new Exception(curl_error($ch));

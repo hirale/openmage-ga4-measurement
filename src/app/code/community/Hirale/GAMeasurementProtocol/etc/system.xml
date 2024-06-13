@@ -52,7 +52,7 @@
                             <depends>
                                 <enabled>1</enabled>
                             </depends>
-                            <comment>When in debug mode, all requests will be logged and sent to debug endpoint, check system.log for more details.</comment>
+                            <comment>When in debug mode, all requests will be logged in the system log, you can check debug view (https://support.google.com/analytics/answer/7201382) for more info.</comment>
                         </debug_mode>
                     </fields>
                 </measurement>
