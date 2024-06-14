@@ -11,7 +11,8 @@
     "require": {
         "php": "^8.0",
         "magento-hackathon/magento-composer-installer": "*",
-        "hirale/openmage-redis-queue": "*"
+        "hirale/openmage-redis-queue": "*",
+        "jaybizzle/crawler-detect": "^1.2"
     },
     "authors": [
         {

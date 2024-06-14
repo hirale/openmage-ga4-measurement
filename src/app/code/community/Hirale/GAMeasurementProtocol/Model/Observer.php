@@ -1,18 +1,21 @@
 <?php
 
+use Jaybizzle\CrawlerDetect\CrawlerDetect;
+
 class Hirale_GAMeasurementProtocol_Model_Observer
 {
     protected $helper;
     protected $gaHelper;
     protected $queue;
     protected $baseEventData;
-    protected $isBot;
+    protected $CrawlerDetect;
 
     public function __construct()
     {
         $this->helper = Mage::helper('gameasurementprotocol');
         $this->gaHelper = Mage::helper('googleanalytics');
         $this->queue = Mage::getModel('hirale_queue/task');
+        $this->CrawlerDetect = new CrawlerDetect();
     }
 
     public function generateClientId(Varien_Event_Observer $observer)
@@ -22,11 +25,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     protected function isBot()
     {
-        if (preg_match('/bot|crawl|slurp|spider|GeedoProductSearch|mediapartners/i', Mage::helper('core/http')->getHttpUserAgent())) {
-            return true;
-        } else {
-            return false;
-        }
+        return $this->CrawlerDetect->isCrawler(Mage::helper('core/http')->getHttpUserAgent());
     }
 
     protected function canSend()
