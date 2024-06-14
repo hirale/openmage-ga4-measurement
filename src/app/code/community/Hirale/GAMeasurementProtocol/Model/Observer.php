@@ -6,8 +6,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     protected $gaHelper;
     protected $queue;
     protected $baseEventData;
-
-
+    protected $isBot;
 
     public function __construct()
     {
@@ -19,6 +18,23 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     public function generateClientId(Varien_Event_Observer $observer)
     {
         $this->helper->getClientId();
+    }
+
+    protected function isBot()
+    {
+        if (preg_match('/bot|crawl|slurp|spider|GeedoProductSearch|mediapartners/i', Mage::helper('core/http')->getHttpUserAgent())) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    protected function canSend()
+    {
+        if ($this->helper->isMeasurementEnabled() && !$this->isBot()) {
+            return true;
+        }
+        return false;
     }
 
 
@@ -65,7 +81,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     }
     public function addOrRemoveItemsFromCart(Varien_Event_Observer $observer)
     {
-        if (!$this->helper->isMeasurementEnabled()) {
+        if (!$this->canSend()) {
             return;
         }
 
@@ -134,7 +150,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function addToWishlist(Varien_Event_Observer $observer)
     {
-        if (!$this->helper->isMeasurementEnabled()) {
+        if (!$this->canSend()) {
             return;
         }
         $items = $observer->getEvent()->getItems();
@@ -164,6 +180,9 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function signUp(Varien_Event_Observer $observer)
     {
+        if (!$this->canSend()) {
+            return;
+        }
         $eventData = $this->getBaseEventData();
         $eventData['events'][] = [
             'name' => 'sign_up',
@@ -176,6 +195,9 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function login(Varien_Event_Observer $observer)
     {
+        if (!$this->canSend()) {
+            return;
+        }
         $eventData = $this->getBaseEventData();
         $eventData['events'][] = [
             'name' => 'login',
@@ -188,7 +210,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function dispatchRouteEvent(Varien_Event_Observer $observer)
     {
-        if (!$this->helper->isMeasurementEnabled()) {
+        if (!$this->canSend()) {
             return;
         }
         $currency = Mage::app()->getStore()->getBaseCurrencyCode();
