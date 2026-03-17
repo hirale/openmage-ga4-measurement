@@ -219,6 +219,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
         $events = [];
         switch ($route) {
+            case 'firecheckout_index_index':
             case 'checkout_onepage_index':
                 $events[] = $this->getBeginCheckoutEvent($currency);
                 break;
