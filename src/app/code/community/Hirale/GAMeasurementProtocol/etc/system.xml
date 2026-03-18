@@ -52,8 +52,20 @@
                             <depends>
                                 <enabled>1</enabled>
                             </depends>
-                            <comment>When in debug mode, all requests will be logged in the system log, you can check debug view (https://support.google.com/analytics/answer/7201382) for more info.</comment>
+                            <comment>When in debug mode, all requests will be logged. You can check debug view (https://support.google.com/analytics/answer/7201382) for more info.</comment>
                         </debug_mode>
+                        <log_file translate="label comment">
+                            <label>Log File</label>
+                            <frontend_type>text</frontend_type>
+                            <sort_order>50</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <depends>
+                                <debug_mode>1</debug_mode>
+                            </depends>
+                            <comment>Log file name inside var/log/ (e.g. ga_measurement.log).</comment>
+                        </log_file>
                     </fields>
                 </measurement>
             </groups>

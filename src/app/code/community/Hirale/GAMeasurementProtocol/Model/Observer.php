@@ -338,7 +338,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
                         'item_name' => $product->getName(),
                         'currency' => $currency,
                         'index' => 0,
-                        'item_brand' => $product->getManufacturer() ?? '',
+                        'item_brand' => $this->getManufacturerLabel($product),
                         'item_category' => $this->gaHelper->getLastCategoryName($product) ?? '',
                         'price' => $this->helper->formatPrice($product->getFinalPrice()),
                         'quantity' => 1
@@ -366,25 +366,37 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     protected function getQuoteItems($quote, $currency)
     {
+        $visibleItems = array_filter(
+            $quote->getAllVisibleItems(),
+            fn($i) => !$i->getParentItem()
+        );
+
+        $productIds = array_map(fn($i) => $i->getProductId(), $visibleItems);
+        $productsById = $this->loadProductsWithManufacturer($productIds);
+
         $items = [];
-        foreach ($quote->getAllVisibleItems() as $key => $quoteItem) {
-            if ($quoteItem->getParentItem()) {
-                continue;
-            }
-            $items[] = $this->prepareItemData($quoteItem->getProduct(), $quoteItem->getBasePrice(), $currency, $quoteItem->getQty(), $key);
+        foreach (array_values($visibleItems) as $key => $quoteItem) {
+            $product = $productsById[$quoteItem->getProductId()] ?? $quoteItem->getProduct();
+            $items[] = $this->prepareItemData($product, $quoteItem->getBasePrice(), $currency, $quoteItem->getQty(), $key);
         }
         return $items;
     }
 
     protected function getOrderItems($order, $currency)
     {
+        $visibleItems = array_filter(
+            $order->getAllVisibleItems(),
+            fn($i) => !$i->getParentItem()
+        );
+
+        $productIds = array_map(fn($i) => $i->getProductId(), $visibleItems);
+        $productsById = $this->loadProductsWithManufacturer($productIds);
+
         $items = [];
-        foreach ($order->getAllVisibleItems() as $key => $orderItem) {
-            if ($orderItem->getParentItem()) {
-                continue;
-            }
+        foreach (array_values($visibleItems) as $key => $orderItem) {
+            $product = $productsById[$orderItem->getProductId()] ?? $orderItem->getProduct();
             $items[] = $this->prepareItemData(
-                $orderItem->getProduct(),
+                $product,
                 $orderItem->getBasePrice(),
                 $currency,
                 $orderItem->getQtyOrdered(),
@@ -398,17 +410,25 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     protected function getCategoryItems($currency)
     {
         $layer = Mage::getSingleton('catalog/layer');
-        $productCollection = $layer->getProductCollection()->addAttributeToSelect('sku');
+        $productCollection = $layer->getProductCollection();
         $toolbarBlock = Mage::app()->getLayout()->getBlock('product_list_toolbar');
         $pageSize = $toolbarBlock->getLimit();
         $currentPage = $toolbarBlock->getCurrentPage();
 
+        // The layer collection is already loaded by the time this observer runs (core_app_run_after),
+        // so setPageSize/setCurPage and addAttributeToSelect are no-ops here. The collection already
+        // contains the correct page of products as rendered. Manufacturer must be loaded separately.
         if ($pageSize !== 'all') {
             $productCollection->setPageSize($pageSize)->setCurPage($currentPage);
         }
+        $productIds = array_keys($productCollection->getItems());
+        $manufacturerMap = $this->loadProductsWithManufacturer($productIds);
 
         $items = [];
         foreach ($productCollection as $key => $product) {
+            if (isset($manufacturerMap[$product->getId()])) {
+                $product->setData('manufacturer', $manufacturerMap[$product->getId()]->getData('manufacturer'));
+            }
             $items[] = $this->prepareItemData($product, $product->getFinalPrice(), $currency, 1, $key);
         }
         return $items;
@@ -421,7 +441,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             'item_name' => $product->getName(),
             'currency' => $currency,
             'index' => $index,
-            'item_brand' => $product->getManufacturer() ?? '',
+            'item_brand' => $this->getManufacturerLabel($product),
             'item_category' => $this->gaHelper->getLastCategoryName($product) ?? '',
             'price' => $this->helper->formatPrice($price),
             'quantity' => $this->helper->formatPrice($quantity)
@@ -432,6 +452,33 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         }
 
         return $item;
+    }
+
+    protected function loadProductsWithManufacturer(array $productIds)
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+        $collection = Mage::getModel('catalog/product')->getCollection()
+            ->addAttributeToSelect('manufacturer')
+            ->addFieldToFilter('entity_id', ['in' => $productIds]);
+        $map = [];
+        foreach ($collection as $product) {
+            $map[$product->getId()] = $product;
+        }
+        return $map;
+    }
+
+    protected function getManufacturerLabel($product): string
+    {
+        $rawValue = $product->getData('manufacturer');
+        if (empty($rawValue)) {
+            return '';
+        }
+        $value = $product->getResource()->getAttribute('manufacturer')
+            ?->getFrontend()
+            ->getValue($product);
+        return $value ? (string) $value : '';
     }
 
     protected function getSearchEvent($term)

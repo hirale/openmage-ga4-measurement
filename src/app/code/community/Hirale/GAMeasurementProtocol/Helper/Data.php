@@ -7,6 +7,7 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
     protected $_measurementId = null;
     protected $_apiSecret = null;
     protected $_isDebugMode = null;
+    protected $_logFile = null;
 
     public function isMeasurementEnabled()
     {
@@ -22,6 +23,14 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
             $this->_isDebugMode = Mage::getStoreConfig('google/measurement/debug_mode');
         }
         return $this->_isDebugMode;
+    }
+
+    public function getLogFile()
+    {
+        if (is_null($this->_logFile)) {
+            $this->_logFile = Mage::getStoreConfig('google/measurement/log_file') ?: 'ga_measurement.log';
+        }
+        return $this->_logFile;
     }
 
     public function getMeasurementProtocolUrl()
