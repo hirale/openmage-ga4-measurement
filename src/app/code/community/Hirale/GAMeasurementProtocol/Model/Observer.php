@@ -45,9 +45,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     protected function addToQueue($events)
     {
         try {
+            $shouldDebug = $this->helper->isDebugMode();
+            $events['_debug_mode'] = $shouldDebug;
             foreach ($events['events'] as &$event) {
                 $params = &$event['params'];
-                if ($this->helper->isDebugMode()) {
+                if ($shouldDebug) {
                     $params['debug_mode'] = true;
                 }
                 $params['user_agent'] = Mage::helper('core/http')->getHttpUserAgent();

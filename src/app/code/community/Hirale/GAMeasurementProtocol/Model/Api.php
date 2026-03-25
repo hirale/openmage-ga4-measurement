@@ -10,7 +10,9 @@ class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskH
 
     public function handle($data)
     {
-        $event = $data['data'];
+        $payloadData = $data['data'];
+        $shouldLogDebugEvent = !empty($payloadData['_debug_mode']);
+        unset($payloadData['_debug_mode']);
         $url = $this->helper->getMeasurementProtocolUrl();
         $measurementId = $this->helper->getMeasurementId();
         $apiSecret = $this->helper->getApiSecret();
@@ -20,7 +22,7 @@ class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskH
         }
 
         $url .= "?measurement_id=$measurementId&api_secret=$apiSecret";
-        $payload = json_encode($event, JSON_UNESCAPED_SLASHES);
+        $payload = json_encode($payloadData, JSON_UNESCAPED_SLASHES);
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_POST          => true,
@@ -30,9 +32,9 @@ class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskH
         ]);
 
         curl_exec($ch);
-        if ($this->helper->isDebugMode()) {
-            $eventTime = isset($event['timestamp_micros'])
-                ? date('Y-m-d H:i:s', (int) ($event['timestamp_micros'] / 1000000))
+        if ($shouldLogDebugEvent) {
+            $eventTime = isset($payloadData['timestamp_micros'])
+                ? date('Y-m-d H:i:s', (int) ($payloadData['timestamp_micros'] / 1000000))
                 : 'unknown';
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             Mage::log("[$eventTime] HTTP $httpCode $payload", null, $this->helper->getLogFile());

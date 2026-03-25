@@ -52,7 +52,7 @@
                             <depends>
                                 <enabled>1</enabled>
                             </depends>
-                            <comment>When in debug mode, all requests will be logged. You can check debug view (https://support.google.com/analytics/answer/7201382) for more info.</comment>
+                            <comment><![CDATA[When enabled, debug_mode=true is sent only to IPs listed in System > Developer > Developer Client Restrictions (dev/restrict/allow_ips). Important: this feature fails closed. If that list is empty or does not match the visitor IP exactly, no visitor receives the debug flag and no debug requests are logged. See also: https://support.google.com/analytics/answer/7201382]]></comment>
                         </debug_mode>
                         <log_file translate="label comment">
                             <label>Log File</label>
