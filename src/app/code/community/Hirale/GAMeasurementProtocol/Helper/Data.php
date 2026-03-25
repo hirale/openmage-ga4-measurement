@@ -8,7 +8,6 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
     protected $_apiSecret = null;
     protected $_isDebugMode = null;
     protected $_logFile = null;
-    protected $_devAllowIps = null;
 
     public function isMeasurementEnabled()
     {
@@ -23,33 +22,17 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
         if (is_null($this->_isDebugMode)) {
             $this->_isDebugMode = Mage::getStoreConfig('google/measurement/debug_mode');
         }
-        if (!$this->_isDebugMode) {
-            return false;
-        }
-        return $this->isAllowedIp();
-    }
-
-    public function getDevAllowIps()
-    {
-        if (is_null($this->_devAllowIps)) {
-            $raw = Mage::getStoreConfig('dev/restrict/allow_ips');
-            if (empty($raw)) {
-                $this->_devAllowIps = [];
-            } else {
-                $this->_devAllowIps = array_filter(array_map('trim', explode(',', $raw)));
-            }
-        }
-        return $this->_devAllowIps;
+        return $this->_isDebugMode && $this->isAllowedIp();
     }
 
     public function isAllowedIp()
     {
-        $allowedIps = $this->getDevAllowIps();
-        if (empty($allowedIps)) {
+        $raw = Mage::getStoreConfig(Mage_Core_Helper_Data::XML_PATH_DEV_ALLOW_IPS);
+        if (empty($raw)) {
             return false;
         }
-        $remoteIp = Mage::helper('core/http')->getRemoteAddr();
-        return in_array($remoteIp, $allowedIps);
+
+        return Mage::helper('core')->isDevAllowed();
     }
 
     public function getLogFile()
