@@ -4,8 +4,17 @@ use Jaybizzle\CrawlerDetect\CrawlerDetect;
 
 class Hirale_GAMeasurementProtocol_Model_Observer
 {
+    /**
+     * @var Hirale_GAMeasurementProtocol_Helper_Data
+     */
     protected $helper;
+    /**
+     * @var Mage_GoogleAnalytics_Helper_Data
+     */
     protected $gaHelper;
+    /**
+     * @var Hirale_Queue_Model_Task
+     */
     protected $queue;
     protected $baseEventData;
     protected $CrawlerDetect;
@@ -462,7 +471,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             return [];
         }
         $collection = Mage::getModel('catalog/product')->getCollection()
-            ->addAttributeToSelect('manufacturer')
+            ->addAttributeToSelect(['name', 'manufacturer'])
             ->addFieldToFilter('entity_id', ['in' => $productIds]);
         $map = [];
         foreach ($collection as $product) {
