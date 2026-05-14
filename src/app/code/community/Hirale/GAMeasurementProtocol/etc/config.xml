@@ -11,6 +11,11 @@
                 <log_file>ga_measurement.log</log_file>
             </measurement>
         </google>
+        <hirale_queue_handlers>
+            <Hirale_GAMeasurementProtocol_Model_Api>
+                <model>gameasurementprotocol/api</model>
+            </Hirale_GAMeasurementProtocol_Model_Api>
+        </hirale_queue_handlers>
     </default>
     <global>
         <helpers>

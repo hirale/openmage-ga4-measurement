@@ -16,15 +16,12 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * @var Hirale_Queue_Model_Task
      */
     protected $queue;
-    protected $baseEventData;
     protected $CrawlerDetect;
 
     public function __construct()
     {
         $this->helper = Mage::helper('gameasurementprotocol');
         $this->gaHelper = Mage::helper('googleanalytics');
-        $this->queue = Mage::getModel('hirale_queue/task');
-        $this->CrawlerDetect = new CrawlerDetect();
     }
 
     public function generateClientId(Varien_Event_Observer $observer)
@@ -34,70 +31,134 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     protected function isBot()
     {
-        return $this->CrawlerDetect->isCrawler(Mage::helper('core/http')->getHttpUserAgent());
+        return $this->getCrawlerDetect()->isCrawler(Mage::helper('core/http')->getHttpUserAgent());
     }
 
-    protected function canSend()
+    protected function canSend(?int $storeId = null)
     {
-        if ($this->helper->isMeasurementEnabled() && !$this->isBot()) {
-            return true;
-        }
-        return false;
+        return $this->helper->isMeasurementEnabled($storeId) && !$this->isBot();
     }
-
 
     /**
-     * Add a task to the queue for processing by the Hirale_GAMeasurementProtocol_Model_Api class.
-     *
-     * @param array $events The name of the event to be processed.
+     * Resolve the storefront store id to scope config (measurement_id /
+     * api_secret) reads. Falls back to the current store when nothing more
+     * specific is supplied.
      */
-    protected function addToQueue($events)
+    protected function resolveStoreId($candidate = null)
+    {
+        if ($candidate !== null && $candidate !== '' && (int) $candidate > 0) {
+            return (int) $candidate;
+        }
+        return (int) Mage::app()->getStore()->getId();
+    }
+
+    /**
+     * Enqueue a payload of GA4 events for the originating store. The store
+     * id is carried as `_store_id` in the payload so the worker resolves
+     * measurement_id / api_secret against the right scope; the worker
+     * strips both `_store_id` and `_debug_mode` before forwarding to GA4.
+     *
+     * @param array $events
+     */
+    protected function addToQueue($events, ?int $storeId = null)
     {
         try {
-            $shouldDebug = $this->helper->isDebugMode();
+            $storeId = $this->resolveStoreId($storeId);
+            $shouldDebug = $this->helper->isDebugMode($storeId);
             $events['_debug_mode'] = $shouldDebug;
+            $events['_store_id'] = $storeId;
+
+            $userAgent = (string) Mage::helper('core/http')->getHttpUserAgent();
+            $platform = (string) Mage::helper('core/string')->cleanString(
+                (string) Mage::app()->getRequest()->getServer('HTTP_SEC_CH_UA_PLATFORM'),
+            );
+
             foreach ($events['events'] as &$event) {
                 $params = &$event['params'];
                 if ($shouldDebug) {
                     $params['debug_mode'] = true;
                 }
-                $params['user_agent'] = Mage::helper('core/http')->getHttpUserAgent();
-                $params['platform'] = Mage::helper('core/string')->cleanString(Mage::app()->getRequest()->getServer('HTTP_SEC_CH_UA_PLATFORM'));
+                $params['user_agent'] = $userAgent;
+                $params['platform'] = $platform;
             }
+            unset($event, $params);
 
-            $this->queue->addTask(
+            $eventNames = array_map(static fn ($event) => $event['name'] ?? '', $events['events'] ?? []);
+            $this->getQueue()->enqueue(
                 'Hirale_GAMeasurementProtocol_Model_Api',
-                $events
+                $events,
+                [
+                    'metadata' => [
+                        'source' => 'hirale_gameasurementprotocol',
+                        'store_id' => $storeId,
+                        'event_names' => array_values(array_filter($eventNames)),
+                    ],
+                ],
             );
         } catch (Exception $e) {
             Mage::logException($e);
         }
     }
 
-    protected function getBaseEventData()
+    /**
+     * Build the shared per-event envelope (client_id, session_id, user_id,
+     * timestamp). Regenerated per call rather than cached on the observer
+     * instance, because store_id may vary between events handled in the
+     * same request lifetime.
+     */
+    protected function getBaseEventData(?int $storeId = null)
     {
-        if (!$this->baseEventData) {
-            $this->baseEventData = [
-                'client_id' => $this->helper->getClientId(),
-                'timestamp_micros' => floor(microtime(true) * 1000000),
-                'non_personalized_ads' => true
-            ];
-            if (Mage::getSingleton('customer/session')->isLoggedIn()) {
-                $customer = Mage::getSingleton('customer/session')->getCustomer();
-                $this->baseEventData['user_id'] = $customer->getId();
+        $storeId = $this->resolveStoreId($storeId);
+        $base = [
+            'client_id' => $this->helper->getClientId(),
+            'timestamp_micros' => (int) floor(microtime(true) * 1000000),
+            'non_personalized_ads' => true,
+        ];
+
+        $sessionId = $this->helper->getSessionId($storeId);
+        if ($sessionId !== null) {
+            $base['session_id'] = $sessionId;
+        }
+
+        $customerSession = Mage::getSingleton('customer/session');
+        if ($customerSession instanceof Mage_Customer_Model_Session && $customerSession->isLoggedIn()) {
+            $customer = $customerSession->getCustomer();
+            if ($customer && $customer->getId()) {
+                $base['user_id'] = (string) $customer->getId();
             }
         }
-        return $this->baseEventData;
+
+        return $base;
+    }
+
+    protected function getQueue()
+    {
+        if ($this->queue === null) {
+            $queue = Mage::getModel('hirale_queue/queue');
+            if (!is_object($queue) || !method_exists($queue, 'enqueue')) {
+                throw new RuntimeException('Hirale Queue service is unavailable.');
+            }
+            $this->queue = $queue;
+        }
+        return $this->queue;
+    }
+
+    protected function getCrawlerDetect()
+    {
+        if ($this->CrawlerDetect === null) {
+            $this->CrawlerDetect = new CrawlerDetect();
+        }
+        return $this->CrawlerDetect;
     }
     public function addOrRemoveItemsFromCart(Varien_Event_Observer $observer)
     {
-        if (!$this->canSend()) {
-            return;
-        }
-
         /** @var Mage_Sales_Model_Quote_Item $item */
         $item = $observer->getEvent()->getItem();
         $quote = Mage::getSingleton('checkout/session')->getQuote();
+        $storeId = $this->resolveStoreId($item->getStoreId() ?: $quote->getStoreId());
+        if (!$this->canSend($storeId)) {
+            return;
+        }
         if ($item->getParentItem()) {
             return;
         }
@@ -128,7 +189,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         }
 
         if ($addedQty || $removedQty) {
-            $eventData = $this->getBaseEventData();
+            $eventData = $this->getBaseEventData($storeId);
             $items = [];
             $currency = $quote->getBaseCurrencyCode();
             if ($addedQty) {
@@ -154,79 +215,99 @@ class Hirale_GAMeasurementProtocol_Model_Observer
                     ]
                 ];
             }
-            $this->addToQueue($eventData);
+            $this->addToQueue($eventData, $storeId);
         }
     }
 
     public function addToWishlist(Varien_Event_Observer $observer)
     {
-        if (!$this->canSend()) {
+        $items = $observer->getEvent()->getItems();
+        if (!$items || count($items) === 0) {
             return;
         }
-        $items = $observer->getEvent()->getItems();
-        if (count($items) > 0) {
-            $eventData = $this->getBaseEventData();
-            $value = 0;
-            $currency = Mage::app()->getStore()->getBaseCurrencyCode();
-            $newItems = [];
-            foreach ($items as $item) {
-                $_product = $item->getProduct();
-                $_price = $_product->getFinalPrice();
-                $newItems[] = $this->prepareItemData($item->getProduct(), $_price, $currency, 1, 0);
-                $value += $_price;
-            }
-            $eventData['events'][] = [
-                'name' => 'add_to_wishlist',
-                'params' => [
-                    'currency' => $currency,
-                    'engagement_time_msec' => 1,
-                    'value' => $this->helper->formatPrice($value),
-                    'items' => $newItems
-                ]
-            ];
-            $this->addToQueue($eventData);
+
+        $firstItem = is_array($items) ? reset($items) : $items[0];
+        $storeId = $this->resolveStoreId(is_object($firstItem) && method_exists($firstItem, 'getStoreId') ? $firstItem->getStoreId() : null);
+        if (!$this->canSend($storeId)) {
+            return;
         }
+
+        $eventData = $this->getBaseEventData($storeId);
+        $value = 0;
+        $currency = Mage::app()->getStore($storeId)->getBaseCurrencyCode();
+        $newItems = [];
+        foreach ($items as $item) {
+            $_product = $item->getProduct();
+            $_price = $_product->getFinalPrice();
+            $newItems[] = $this->prepareItemData($item->getProduct(), $_price, $currency, 1, 0);
+            $value += $_price;
+        }
+        $eventData['events'][] = [
+            'name' => 'add_to_wishlist',
+            'params' => [
+                'currency' => $currency,
+                'engagement_time_msec' => 1,
+                'value' => $this->helper->formatPrice($value),
+                'items' => $newItems
+            ]
+        ];
+        $this->addToQueue($eventData, $storeId);
     }
 
     public function signUp(Varien_Event_Observer $observer)
     {
-        if (!$this->canSend()) {
+        $customer = $observer->getEvent()->getCustomer();
+        $storeId = $this->resolveStoreId($customer ? $customer->getStoreId() : null);
+        if (!$this->canSend($storeId)) {
             return;
         }
-        $eventData = $this->getBaseEventData();
+        $eventData = $this->getBaseEventData($storeId);
         $eventData['events'][] = [
             'name' => 'sign_up',
             'params' => [
                 'engagement_time_msec' => 1,
             ]
         ];
-        $this->addToQueue($eventData);
+        $this->addToQueue($eventData, $storeId);
     }
 
     public function login(Varien_Event_Observer $observer)
     {
-        if (!$this->canSend()) {
+        $customer = $observer->getEvent()->getCustomer();
+        $storeId = $this->resolveStoreId($customer ? $customer->getStoreId() : null);
+        if (!$this->canSend($storeId)) {
             return;
         }
-        $eventData = $this->getBaseEventData();
+        $eventData = $this->getBaseEventData($storeId);
         $eventData['events'][] = [
             'name' => 'login',
             'params' => [
                 'engagement_time_msec' => 1,
             ]
         ];
-        $this->addToQueue($eventData);
+        $this->addToQueue($eventData, $storeId);
     }
 
     public function dispatchRouteEvent(Varien_Event_Observer $observer)
     {
-        if (!$this->canSend()) {
-            return;
-        }
-        $currency = Mage::app()->getStore()->getBaseCurrencyCode();
         $request = $observer->getEvent()->getApp()->getRequest();
         $route = $request->getModuleName() . '_' . $request->getControllerName() . '_' . $request->getActionName();
-        $eventData = $this->getBaseEventData();
+
+        // Purchase events scope to the order's store, not the current
+        // storefront store — in a multi-store checkout flow these can differ.
+        if ($route === 'checkout_onepage_success') {
+            $order = Mage::getSingleton('checkout/session')->getLastRealOrder();
+            $storeId = $this->resolveStoreId($order ? $order->getStoreId() : null);
+        } else {
+            $storeId = $this->resolveStoreId();
+        }
+
+        if (!$this->canSend($storeId)) {
+            return;
+        }
+
+        $currency = Mage::app()->getStore($storeId)->getBaseCurrencyCode();
+        $eventData = $this->getBaseEventData($storeId);
 
         $events = [];
         switch ($route) {
@@ -277,7 +358,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         }
         if ($events) {
             $eventData['events'] = $events;
-            $this->addToQueue($eventData);
+            $this->addToQueue($eventData, $storeId);
         }
     }
 

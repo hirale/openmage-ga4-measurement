@@ -1,46 +1,99 @@
 <?php
+
+declare(strict_types=1);
+
 class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskHandlerInterface
 {
-    protected $helper;
+    public const META_STORE_ID = '_store_id';
+    public const META_DEBUG_MODE = '_debug_mode';
 
-    public function __construct()
+    private ?Hirale_GAMeasurementProtocol_Helper_Data $_helper = null;
+
+    /**
+     * @param array<string, mixed> $task
+     */
+    public function handle(array $task): void
     {
-        $this->helper = Mage::helper('gameasurementprotocol');
-    }
+        $payload = is_array($task['data'] ?? null) ? $task['data'] : [];
+        $storeId = isset($payload[self::META_STORE_ID]) ? (int) $payload[self::META_STORE_ID] : null;
+        $shouldLogDebugEvent = !empty($payload[self::META_DEBUG_MODE]);
 
-    public function handle($data)
-    {
-        $payloadData = $data['data'];
-        $shouldLogDebugEvent = !empty($payloadData['_debug_mode']);
-        unset($payloadData['_debug_mode']);
-        $url = $this->helper->getMeasurementProtocolUrl();
-        $measurementId = $this->helper->getMeasurementId();
-        $apiSecret = $this->helper->getApiSecret();
+        unset($payload[self::META_STORE_ID], $payload[self::META_DEBUG_MODE]);
 
-        if (!$url || !$measurementId || !$apiSecret) {
+        $helper = $this->_getHelper();
+        $url = $helper->getMeasurementProtocolUrl();
+        $measurementId = $helper->getMeasurementId($storeId);
+        $apiSecret = $helper->getApiSecret($storeId);
+
+        if ($measurementId === null || $apiSecret === null || $url === '') {
             return;
         }
 
-        $url .= "?measurement_id=$measurementId&api_secret=$apiSecret";
-        $payload = json_encode($payloadData, JSON_UNESCAPED_SLASHES);
+        $body = (string) json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $result = $this->_postToGa4(
+            $url . '?measurement_id=' . rawurlencode($measurementId) . '&api_secret=' . rawurlencode($apiSecret),
+            $body,
+        );
+
+        if ($shouldLogDebugEvent) {
+            $eventTime = isset($payload['timestamp_micros'])
+                ? date('Y-m-d H:i:s', (int) ($payload['timestamp_micros'] / 1000000))
+                : 'unknown';
+            Mage::log(
+                sprintf('[%s] HTTP %d %s', $eventTime, $result['http_code'], $body),
+                null,
+                $helper->getLogFile($storeId),
+            );
+        }
+
+        if ($result['curl_errno'] !== 0) {
+            throw new RuntimeException($result['curl_error']);
+        }
+    }
+
+    /**
+     * Performs the POST to GA4 Measurement Protocol. Factored out so unit
+     * tests can override without hitting the network.
+     *
+     * @return array{http_code:int,curl_errno:int,curl_error:string}
+     */
+    protected function _postToGa4(string $url, string $body): array
+    {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
-            CURLOPT_POST          => true,
-            CURLOPT_POSTFIELDS    => $payload,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER    => ['Content-Type: application/json'],
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         ]);
-
         curl_exec($ch);
-        if ($shouldLogDebugEvent) {
-            $eventTime = isset($payloadData['timestamp_micros'])
-                ? date('Y-m-d H:i:s', (int) ($payloadData['timestamp_micros'] / 1000000))
-                : 'unknown';
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            Mage::log("[$eventTime] HTTP $httpCode $payload", null, $this->helper->getLogFile());
+        $result = [
+            'http_code' => (int) curl_getinfo($ch, CURLINFO_HTTP_CODE),
+            'curl_errno' => (int) curl_errno($ch),
+            'curl_error' => (string) curl_error($ch),
+        ];
+        curl_close($ch);
+
+        return $result;
+    }
+
+    public function setHelper(Hirale_GAMeasurementProtocol_Helper_Data $helper): self
+    {
+        $this->_helper = $helper;
+
+        return $this;
+    }
+
+    private function _getHelper(): Hirale_GAMeasurementProtocol_Helper_Data
+    {
+        if ($this->_helper === null) {
+            $helper = Mage::helper('gameasurementprotocol');
+            if (!$helper instanceof Hirale_GAMeasurementProtocol_Helper_Data) {
+                throw new RuntimeException('Hirale GAMeasurementProtocol helper is unavailable.');
+            }
+            $this->_helper = $helper;
         }
-        if (curl_errno($ch)) {
-            throw new Exception(curl_error($ch));
-        }
+
+        return $this->_helper;
     }
 }
