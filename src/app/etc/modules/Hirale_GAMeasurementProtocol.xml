@@ -5,7 +5,6 @@
             <active>true</active>
             <codePool>community</codePool>
             <depends>
-                <Mage_GoogleAnalytics />
                 <Hirale_Queue />
             </depends>
         </Hirale_GAMeasurementProtocol>
