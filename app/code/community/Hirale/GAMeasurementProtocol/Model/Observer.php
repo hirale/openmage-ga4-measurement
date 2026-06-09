@@ -1,5 +1,6 @@
 <?php
 
+use Hirale\Queue\Bus;
 use Jaybizzle\CrawlerDetect\CrawlerDetect;
 
 class Hirale_GAMeasurementProtocol_Model_Observer
@@ -83,18 +84,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             }
             unset($event, $params);
 
-            $eventNames = array_map(static fn ($event) => $event['name'] ?? '', $events['events'] ?? []);
-            $this->getQueue()->enqueue(
-                'Hirale_GAMeasurementProtocol_Model_Api',
-                $events,
-                [
-                    'metadata' => [
-                        'source' => 'hirale_gameasurementprotocol',
-                        'store_id' => $storeId,
-                        'event_names' => array_values(array_filter($eventNames)),
-                    ],
-                ],
-            );
+            Bus::dispatch(new Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+                events: $events,
+                storeId: (int) $storeId,
+                debugMode: $shouldDebug,
+            ));
         } catch (Exception $e) {
             Mage::logException($e);
         }

@@ -11,11 +11,6 @@
                 <log_file>ga_measurement.log</log_file>
             </measurement>
         </google>
-        <hirale_queue_handlers>
-            <Hirale_GAMeasurementProtocol_Model_Api>
-                <model>gameasurementprotocol/api</model>
-            </Hirale_GAMeasurementProtocol_Model_Api>
-        </hirale_queue_handlers>
     </default>
     <global>
         <helpers>
@@ -28,6 +23,11 @@
                 <class>Hirale_GAMeasurementProtocol_Model</class>
             </gameasurementprotocol>
         </models>
+        <hirale_queue>
+            <handlers>
+                <Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>gameasurementprotocol/api</Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>
+            </handlers>
+        </hirale_queue>
     </global>
     <frontend>
         <events>

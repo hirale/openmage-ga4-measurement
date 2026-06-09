@@ -2,23 +2,15 @@
 
 declare(strict_types=1);
 
-class Hirale_GAMeasurementProtocol_Model_Api implements Hirale_Queue_Model_TaskHandlerInterface
+class Hirale_GAMeasurementProtocol_Model_Api
 {
-    public const META_STORE_ID = '_store_id';
-    public const META_DEBUG_MODE = '_debug_mode';
-
     private ?Hirale_GAMeasurementProtocol_Helper_Data $_helper = null;
 
-    /**
-     * @param array<string, mixed> $task
-     */
-    public function handle(array $task): void
+    public function __invoke(Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage $message): void
     {
-        $payload = is_array($task['data'] ?? null) ? $task['data'] : [];
-        $storeId = isset($payload[self::META_STORE_ID]) ? (int) $payload[self::META_STORE_ID] : null;
-        $shouldLogDebugEvent = !empty($payload[self::META_DEBUG_MODE]);
-
-        unset($payload[self::META_STORE_ID], $payload[self::META_DEBUG_MODE]);
+        $payload = $message->events;
+        $storeId = $message->storeId;
+        $shouldLogDebugEvent = $message->debugMode;
 
         $helper = $this->_getHelper();
         $url = $helper->getMeasurementProtocolUrl();

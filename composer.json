@@ -1,51 +1,41 @@
 {
     "name": "hirale/openmage-ga4-measurement",
-    "description": "A module for integrating with the Google Analytics 4 Measurement Protocol API",
-    "type": "magento-module",
+    "type": "maho-module",
     "license": "OSL-3.0",
+    "description": "A module for integrating with the Google Analytics 4 Measurement Protocol API, built on hirale/queue.",
     "keywords": [
-        "magento",
+        "maho",
+        "mahoecommerce",
         "magento1",
-        "openmage"
+        "ga4",
+        "analytics"
     ],
     "require": {
-        "php": "^8.0",
-        "magento-hackathon/magento-composer-installer": "*",
-        "hirale/openmage-redis-queue": "*",
+        "php": ">=8.3",
+        "mahocommerce/maho": "^26.5",
+        "hirale/queue": "^3.0 || dev-master",
         "jaybizzle/crawler-detect": "^1.2"
     },
     "require-dev": {
-        "phpunit/phpunit": "^10.5 || ^12.5"
+        "phpunit/phpunit": "^10.5"
+    },
+    "config": {
+        "allow-plugins": {
+            "mahocommerce/maho-composer-plugin": true
+        }
     },
     "autoload-dev": {
         "psr-4": {
             "HiraleGAMeasurementProtocol\\Tests\\": "tests/"
         }
     },
+    "extra": {
+        "maho-module-dir": "app/code/community/Hirale/GAMeasurementProtocol"
+    },
     "scripts": {
         "test": "phpunit"
     },
     "authors": [
-        {
-            "name": "Hirale"
-        }
-    ],
-    "config": {
-        "allow-plugins": {
-            "cweagans/composer-patches": true,
-            "magento-hackathon/magento-composer-installer": false
-        }
-    },
-    "extra": {
-        "map": [
-            [
-                "src/app/etc/modules/Hirale_GAMeasurementProtocol.xml",
-                "app/etc/modules/Hirale_GAMeasurementProtocol.xml"
-            ],
-            [
-                "src/app/code/community/Hirale/GAMeasurementProtocol",
-                "app/code/community/Hirale/GAMeasurementProtocol"
-            ]
-        ]
-    }
+        { "name": "Hirale" }
+    ]
 }
