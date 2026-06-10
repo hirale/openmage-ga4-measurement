@@ -25,13 +25,22 @@ You can check more events in the [events section](https://developers.google.com/
 
 ## Install
 
-> [!NOTE]
-> This module depends on [`openmage-redis-queue`](https://github.com/hirale/openmage-redis-queue). It has been added to composer requirements.
+Requires [`hirale/queue`](https://github.com/hirale/queue) `^3.0`
+(pulled in automatically).
 
-### Install with [Magento Composer Installer](https://github.com/Cotya/magento-composer-installer)
+**Maho** (26.5+):
 
 ```bash
 composer require hirale/openmage-ga4-measurement
+```
+
+**OpenMage** (20.17+, PHP 8.3+) — one-time tweaks first; details in the
+[hirale/queue README](https://github.com/hirale/queue#openmage-one-time-composer-adjustments):
+
+```bash
+composer config platform.php 8.3
+composer config allow-plugins.hirale/magento-module-installer true
+composer require hirale/magento-module-installer hirale/openmage-ga4-measurement
 ```
 
 ## Usage
