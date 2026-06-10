@@ -104,6 +104,9 @@ class RequestStub
     /** @var array<string, mixed> */
     public array $server = [];
 
+    /** @var array<string, mixed> */
+    public array $params = [];
+
     /**
      * @return mixed
      */
@@ -111,12 +114,39 @@ class RequestStub
     {
         return $this->server[$key] ?? null;
     }
+
+    /**
+     * @return mixed
+     */
+    public function getParam(string $key, $default = null)
+    {
+        return $this->params[$key] ?? $default;
+    }
+}
+
+class WebsiteStub
+{
+    /** @param array<string, mixed> $config */
+    public function __construct(public array $config = [])
+    {
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getConfig(string $path)
+    {
+        return $this->config[$path] ?? null;
+    }
 }
 
 class AppStub
 {
     /** @var array<int, StoreStub> */
     public array $stores = [];
+
+    /** @var array<string, WebsiteStub> */
+    public array $websites = [];
 
     public StoreStub $currentStore;
     public RequestStub $request;
@@ -134,6 +164,11 @@ class AppStub
             return $this->currentStore;
         }
         return $this->stores[$storeId];
+    }
+
+    public function getWebsite(?string $code = null): WebsiteStub
+    {
+        return $this->websites[$code] ?? new WebsiteStub();
     }
 
     public function getRequest(): RequestStub

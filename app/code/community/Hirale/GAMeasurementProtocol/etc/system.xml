@@ -92,6 +92,19 @@
                             </depends>
                             <comment><![CDATA[Paste the full JSON key file of a Google Cloud service account that has the Data Manager API enabled in its project and is added as Editor on the GA4 property. Stored encrypted; shown obscured after save.]]></comment>
                         </dm_service_account_key>
+                        <dm_validate translate="label comment">
+                            <label>Validate Destination</label>
+                            <frontend_model>gameasurementprotocol/adminhtml_system_config_validateDestination</frontend_model>
+                            <sort_order>36</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <depends>
+                                <enabled>1</enabled>
+                                <transport>data_manager</transport>
+                            </depends>
+                            <comment>Sends a validate-only test event with the values on screen. Nothing is recorded in GA4.</comment>
+                        </dm_validate>
                         <debug_mode translate="label">
                             <label>Debug Mode</label>
                             <frontend_type>select</frontend_type>

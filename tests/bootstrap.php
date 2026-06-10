@@ -272,3 +272,5 @@ require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Mode
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/System/Config/Backend/ServiceAccountKey.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/DataManager/Translator.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/DataManager/ClientFactory.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/DataManager/DestinationTester.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Adminhtml/Observer.php';

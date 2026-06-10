@@ -24,6 +24,11 @@
                 <class>Hirale_GAMeasurementProtocol_Model</class>
             </gameasurementprotocol>
         </models>
+        <blocks>
+            <gameasurementprotocol>
+                <class>Hirale_GAMeasurementProtocol_Block</class>
+            </gameasurementprotocol>
+        </blocks>
         <resources>
             <gameasurementprotocol_setup>
                 <setup>
@@ -51,6 +56,30 @@
             </routing>
         </hirale_queue>
     </global>
+    <adminhtml>
+        <events>
+            <controller_action_predispatch_adminhtml_system_config_save>
+                <observers>
+                    <gameasurementprotocol_validate_save>
+                        <type>singleton</type>
+                        <class>gameasurementprotocol/adminhtml_observer</class>
+                        <method>validateConfigOnSave</method>
+                    </gameasurementprotocol_validate_save>
+                </observers>
+            </controller_action_predispatch_adminhtml_system_config_save>
+        </events>
+    </adminhtml>
+    <admin>
+        <routers>
+            <adminhtml>
+                <args>
+                    <modules>
+                        <gameasurementprotocol before="Mage_Adminhtml">Hirale_GAMeasurementProtocol_Adminhtml</gameasurementprotocol>
+                    </modules>
+                </args>
+            </adminhtml>
+        </routers>
+    </admin>
     <frontend>
         <events>
             <controller_front_send_response_after>
