@@ -2,7 +2,7 @@
 <config>
     <modules>
         <Hirale_GAMeasurementProtocol>
-            <version>0.1.0</version>
+            <version>2.1.0</version>
         </Hirale_GAMeasurementProtocol>
     </modules>
     <default>
@@ -23,6 +23,24 @@
                 <class>Hirale_GAMeasurementProtocol_Model</class>
             </gameasurementprotocol>
         </models>
+        <resources>
+            <gameasurementprotocol_setup>
+                <setup>
+                    <module>Hirale_GAMeasurementProtocol</module>
+                </setup>
+            </gameasurementprotocol_setup>
+        </resources>
+        <events>
+            <sales_order_payment_refund>
+                <observers>
+                    <gameasurementprotocol_sales_order_payment_refund>
+                        <type>singleton</type>
+                        <class>gameasurementprotocol/observer</class>
+                        <method>refund</method>
+                    </gameasurementprotocol_sales_order_payment_refund>
+                </observers>
+            </sales_order_payment_refund>
+        </events>
         <hirale_queue>
             <handlers>
                 <Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>gameasurementprotocol/api</Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>
@@ -87,6 +105,15 @@
                     </metaconversions_customer_login>
                 </observers>
             </customer_login>
+            <sales_order_place_after>
+                <observers>
+                    <gameasurementprotocol_sales_order_place_after>
+                        <type>singleton</type>
+                        <class>gameasurementprotocol/observer</class>
+                        <method>captureOrderClientId</method>
+                    </gameasurementprotocol_sales_order_place_after>
+                </observers>
+            </sales_order_place_after>
             <core_app_run_after>
                 <observers>
                     <gameasurementprotocol_core_app_run_after>

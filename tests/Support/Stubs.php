@@ -171,3 +171,239 @@ class RecordingApi extends \Hirale_GAMeasurementProtocol_Model_Api
         return $this->nextResponse;
     }
 }
+
+class ProductStub
+{
+    public function __construct(
+        private string $sku = 'SKU-1',
+        private string $name = 'Item One',
+    ) {
+    }
+
+    public function getSku(): string
+    {
+        return $this->sku;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getData(string $key): mixed
+    {
+        return null;
+    }
+}
+
+class QuoteStub
+{
+    public function __construct(
+        private int $id = 100,
+        private int $storeId = 1,
+        private string $currency = 'USD',
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getStoreId(): int
+    {
+        return $this->storeId;
+    }
+
+    public function getBaseCurrencyCode(): string
+    {
+        return $this->currency;
+    }
+}
+
+class CheckoutSessionStub
+{
+    public function __construct(private QuoteStub $quote)
+    {
+    }
+
+    public function getQuote(): QuoteStub
+    {
+        return $this->quote;
+    }
+}
+
+class CartItemStub
+{
+    public function __construct(
+        private int $id,
+        private float $qty,
+        private ?float $origQty,
+        private float $basePrice,
+        private float $baseRowTotal,
+        private int $quoteId,
+        private int $storeId,
+        private bool $isNew,
+        private bool $hasChanges,
+        private ProductStub $product,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getQty(): float
+    {
+        return $this->qty;
+    }
+
+    public function getOrigData(string $key): ?float
+    {
+        return $key === 'qty' ? $this->origQty : null;
+    }
+
+    public function getBasePrice(): float
+    {
+        return $this->basePrice;
+    }
+
+    public function getBaseRowTotal(): float
+    {
+        return $this->baseRowTotal;
+    }
+
+    public function getQuoteId(): int
+    {
+        return $this->quoteId;
+    }
+
+    public function getStoreId(): int
+    {
+        return $this->storeId;
+    }
+
+    public function getProduct(): ProductStub
+    {
+        return $this->product;
+    }
+
+    public function getParentItem(): ?object
+    {
+        return null;
+    }
+
+    public function isObjectNew(): bool
+    {
+        return $this->isNew;
+    }
+
+    public function isDeleted(): bool
+    {
+        return false;
+    }
+
+    public function hasDataChanges(): bool
+    {
+        return $this->hasChanges;
+    }
+}
+
+/**
+ * Varien-style magic data bag for orders.
+ */
+class OrderStub
+{
+    /** @param array<string, mixed> $data */
+    public function __construct(public array $data = [])
+    {
+    }
+
+    public function __call(string $method, array $args): mixed
+    {
+        $key = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', substr($method, 3)));
+        if (str_starts_with($method, 'get')) {
+            return $this->data[$key] ?? null;
+        }
+        if (str_starts_with($method, 'set')) {
+            $this->data[$key] = $args[0];
+            return $this;
+        }
+        return null;
+    }
+}
+
+class CreditmemoItemStub
+{
+    public function __construct(
+        private string $sku,
+        private string $name,
+        private float $basePrice,
+        private float $qty,
+        private ?int $parentItemId = null,
+    ) {
+    }
+
+    public function getSku(): string
+    {
+        return $this->sku;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getBasePrice(): float
+    {
+        return $this->basePrice;
+    }
+
+    public function getQty(): float
+    {
+        return $this->qty;
+    }
+
+    public function getOrderItem(): object
+    {
+        $parentItemId = $this->parentItemId;
+        return new class ($parentItemId) {
+            public function __construct(private ?int $parentItemId)
+            {
+            }
+
+            public function getParentItemId(): ?int
+            {
+                return $this->parentItemId;
+            }
+        };
+    }
+}
+
+class CreditmemoStub
+{
+    /** @param list<CreditmemoItemStub> $items */
+    public function __construct(
+        private OrderStub $order,
+        private float $baseGrandTotal,
+        private array $items,
+    ) {
+    }
+
+    public function getOrder(): OrderStub
+    {
+        return $this->order;
+    }
+
+    public function getBaseGrandTotal(): float
+    {
+        return $this->baseGrandTotal;
+    }
+
+    /** @return list<CreditmemoItemStub> */
+    public function getAllItems(): array
+    {
+        return $this->items;
+    }
+}

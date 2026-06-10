@@ -175,7 +175,8 @@ class Hirale_GAMeasurementProtocol_Model_Observer
                     'params' => [
                         'currency' => $currency,
                         'engagement_time_msec' => 1,
-                        'value' => $this->helper->formatPrice($item->getBaseRowTotal()),
+                        // Only the units added by this change, not the whole row.
+                        'value' => $this->helper->formatPrice($item->getBasePrice() * $addedQty),
                         'items' => $items
                     ]
                 ];
@@ -186,7 +187,8 @@ class Hirale_GAMeasurementProtocol_Model_Observer
                     'params' => [
                         'currency' => $currency,
                         'engagement_time_msec' => 1,
-                        'value' => $this->helper->formatPrice($item->getBaseRowTotal()),
+                        // Only the units removed by this change, not the whole row.
+                        'value' => $this->helper->formatPrice($item->getBasePrice() * $removedQty),
                         'items' => $items
                     ]
                 ];
@@ -336,6 +338,108 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             $eventData['events'] = $events;
             $this->addToQueue($eventData, $storeId);
         }
+    }
+
+    /**
+     * sales_order_place_after (frontend): persist the visitor's GA ids on
+     * the order so server-side events that fire later without the visitor's
+     * cookies (refunds from admin, API flows) attribute to the original
+     * client instead of whoever triggered them.
+     */
+    public function captureOrderClientId(Varien_Event_Observer $observer)
+    {
+        $order = $observer->getEvent()->getOrder();
+        if (!$order || $order->getGaClientId()) {
+            return;
+        }
+        $storeId = $this->resolveStoreId($order->getStoreId());
+        if (!$this->helper->isMeasurementEnabled($storeId)) {
+            return;
+        }
+
+        $order->setGaClientId($this->helper->getClientId());
+        $sessionId = $this->helper->getSessionId($storeId);
+        if ($sessionId !== null) {
+            $order->setGaSessionId($sessionId);
+        }
+    }
+
+    /**
+     * sales_order_payment_refund (global): GA4 `refund` event, full or
+     * partial. Runs in admin/API context, so the envelope is built from the
+     * order's stored GA ids — never from the current request's cookies,
+     * which would belong to the admin user. No bot check for the same
+     * reason. GA4 reverses revenue by transaction_id; the client id only
+     * has to be stable and well-formed.
+     */
+    public function refund(Varien_Event_Observer $observer)
+    {
+        $creditmemo = $observer->getEvent()->getCreditmemo();
+        $order = $creditmemo ? $creditmemo->getOrder() : null;
+        if (!$order) {
+            return;
+        }
+        $storeId = $this->resolveStoreId($order->getStoreId());
+        if (!$this->helper->isMeasurementEnabled($storeId)) {
+            return;
+        }
+
+        $currency = $order->getBaseCurrencyCode();
+        $items = [];
+        $index = 0;
+        foreach ($creditmemo->getAllItems() as $memoItem) {
+            $qty = (float) $memoItem->getQty();
+            $orderItem = $memoItem->getOrderItem();
+            if ($qty <= 0 || ($orderItem && $orderItem->getParentItemId())) {
+                continue;
+            }
+            // Snapshot data from the credit memo line — independent of the
+            // current catalog state (the product may be gone by refund time).
+            $items[] = [
+                'item_id' => (string) $memoItem->getSku(),
+                'item_name' => (string) $memoItem->getName(),
+                'currency' => $currency,
+                'index' => $index++,
+                'price' => $this->helper->formatPrice($memoItem->getBasePrice()),
+                'quantity' => round($qty, 2),
+            ];
+        }
+
+        $eventData = [
+            'client_id' => $this->getOrderClientId($order),
+            'timestamp_micros' => (int) floor(microtime(true) * 1000000),
+            'non_personalized_ads' => true,
+        ];
+        if ($order->getGaSessionId()) {
+            $eventData['session_id'] = (string) $order->getGaSessionId();
+        }
+        if ($order->getCustomerId()) {
+            $eventData['user_id'] = (string) $order->getCustomerId();
+        }
+        $eventData['events'][] = [
+            'name' => 'refund',
+            'params' => [
+                'currency' => $currency,
+                'transaction_id' => $order->getIncrementId(),
+                'engagement_time_msec' => 1,
+                'value' => $this->helper->formatPrice($creditmemo->getBaseGrandTotal()),
+                'items' => $items
+            ]
+        ];
+        $this->addToQueue($eventData, $storeId);
+    }
+
+    protected function getOrderClientId($order): string
+    {
+        $stored = (string) $order->getGaClientId();
+        if ($stored !== '') {
+            return $stored;
+        }
+        // Deterministic fallback for admin/API/legacy orders placed before
+        // GA ids were captured.
+        $seed = (string) $order->getIncrementId();
+
+        return sprintf('%u.%u', crc32('ga_cid_' . $seed), crc32($seed . '_ga_cid'));
     }
 
     protected function getBeginCheckoutEvent($currency)
@@ -512,7 +616,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             'item_brand' => $this->getManufacturerLabel($product),
             'item_category' => $this->gaHelper->getLastCategoryName($product) ?? '',
             'price' => $this->helper->formatPrice($price),
-            'quantity' => $this->helper->formatPrice($quantity)
+            'quantity' => round((float) $quantity, 2)
         ];
 
         if ($discount !== null) {

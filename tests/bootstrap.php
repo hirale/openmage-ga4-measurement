@@ -147,6 +147,37 @@ if (!class_exists('Mage')) {
     }
 }
 
+if (!class_exists('Varien_Event')) {
+    class Varien_Event
+    {
+        /** @param array<string, mixed> $data */
+        public function __construct(private array $data = [])
+        {
+        }
+
+        public function __call(string $method, array $args): mixed
+        {
+            if (str_starts_with($method, 'get')) {
+                $key = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', substr($method, 3)));
+                return $this->data[$key] ?? null;
+            }
+            return null;
+        }
+    }
+
+    class Varien_Event_Observer
+    {
+        public function __construct(private Varien_Event $event)
+        {
+        }
+
+        public function getEvent(): Varien_Event
+        {
+            return $this->event;
+        }
+    }
+}
+
 require_once __DIR__ . '/Support/QueueBusStub.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Helper/Data.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Message/MeasurementEventMessage.php';
