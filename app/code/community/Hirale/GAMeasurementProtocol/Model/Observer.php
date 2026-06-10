@@ -54,10 +54,9 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     }
 
     /**
-     * Enqueue a payload of GA4 events for the originating store. The store
-     * id is carried as `_store_id` in the payload so the worker resolves
-     * measurement_id / api_secret against the right scope; the worker
-     * strips both `_store_id` and `_debug_mode` before forwarding to GA4.
+     * Dispatch a payload of GA4 events for the originating store. Store id
+     * and debug flag travel as message fields (not inside the payload), so
+     * the handler posts the events body to GA4 exactly as built here.
      *
      * @param array $events
      */
@@ -66,8 +65,6 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         try {
             $storeId = $this->resolveStoreId($storeId);
             $shouldDebug = $this->helper->isDebugMode($storeId);
-            $events['_debug_mode'] = $shouldDebug;
-            $events['_store_id'] = $storeId;
 
             $userAgent = (string) Mage::helper('core/http')->getHttpUserAgent();
             $platform = (string) Mage::helper('core/string')->cleanString(
