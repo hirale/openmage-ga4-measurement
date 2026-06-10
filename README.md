@@ -1,8 +1,13 @@
 # Hirale GAMeasurementProtocol
 
-A module for integrating with the [Google Analytics 4 Measurement Protocol API](https://developers.google.com/analytics/devguides/collection/protocol/ga4/reference?client_type=gtag#overview), sending events from server side.
+Server-side Google Analytics 4 events for OpenMage and Maho, delivered through the [hirale/queue](https://github.com/hirale/queue) worker over your choice of transport:
 
-This module can work with Mage_GoogleAnalytics module. 
+- **Measurement Protocol** (default) — the classic [GA4 MP API](https://developers.google.com/analytics/devguides/collection/protocol/ga4/reference?client_type=gtag#overview), authenticated by an API secret.
+- **Data Manager API** — Google's strategic path for server-side integrations ([overview](https://developers.google.com/data-manager/api)), authenticated by an OAuth service account.
+
+The transport is selectable per store view; observers and queued payloads are identical either way, so switching transports never loses in-flight events — each queued message is sent via the transport configured at the moment it is consumed.
+
+This module can work with Mage_GoogleAnalytics module.
 For duplicate key events, you can consult this page [https://support.google.com/analytics/answer/12313109?hl=en](https://support.google.com/analytics/answer/12313109?hl=en)
 
 ## Supported Events
@@ -13,6 +18,7 @@ For duplicate key events, you can consult this page [https://support.google.com/
  - `remove_from_cart`
  - `view_cart`
  - `purchase`
+ - `refund`
  - `view_item`
  - `view_item_list`
  - `add_to_wishlist`
@@ -25,8 +31,10 @@ You can check more events in the [events section](https://developers.google.com/
 
 ## Install
 
-Requires [`hirale/queue`](https://github.com/hirale/queue) `^3.0`
-(pulled in automatically).
+Requires [`hirale/queue`](https://github.com/hirale/queue) `^3.0` and
+[`googleads/data-manager`](https://packagist.org/packages/googleads/data-manager)
+(both pulled in automatically; the Data Manager client uses its REST
+transport, so neither ext-grpc nor ext-protobuf is required).
 
 **Maho** (26.5+):
 
@@ -45,16 +53,39 @@ composer require hirale/magento-module-installer hirale/openmage-ga4-measurement
 
 ## Usage
 
-### Setup
+Configuration lives in `System > Configuration > Sales > Google API > GA4 Server-Side Events`. Enable the module, pick the **API Transport**, and follow the matching setup below. The **Measurement ID** (`G-XXXXXXX`, from `Admin > Data Streams > choose your stream`) is needed by both transports.
 
-1. Generate an API SECRET in the Google Analytics UI. To create a new secret, navigate to `Admin > Data Streams > choose your stream > Measurement Protocol > Create`.
-2. Get measurement ID associated with a stream, found in the Google Analytics UI under `Admin > Data Streams > choose your stream > Measurement ID`.
-3. Go to openmage system config `System > Configuration > Sales > Google API > Measurement Protocol`. Insert the parameters from step 1 and 2, save.
+### Setup — Measurement Protocol (default)
 
+1. Generate an API SECRET in the Google Analytics UI: `Admin > Data Streams > choose your stream > Measurement Protocol > Create`.
+2. Enter the Measurement ID and API Secret, save.
+
+### Setup — Data Manager API
+
+One-time Google-side setup (detailed in [Google's guide](https://developers.google.com/data-manager/api/devguides/quickstart/set-up-access)):
+
+1. Create (or pick) a Google Cloud project and enable the **Data Manager API** in it.
+2. Create a **service account** in that project (no Cloud IAM roles needed for ingestion) and download a **JSON key** for it.
+3. In GA Admin, open the property's **Access Management** and add the service account's `client_email` as **Editor**.
+4. Note the numeric **Property ID** (`Admin > Property Settings`) — this is not the `G-` Measurement ID.
+
+Then in the store admin:
+
+5. Set **API Transport** to *Data Manager API (OAuth service account)*.
+6. Enter the Measurement ID, the **GA4 Property ID**, and paste the full JSON key file into **Service Account Key (JSON)**. The key is validated at save time and stored encrypted.
+7. Click **Validate Destination** — it sends a validate-only test event with the values on screen (nothing is recorded in GA4) and reports the Google `requestId` on success.
+
+### Transport semantics
+
+- The transport is store-view scoped: different stores can post to MP and Data Manager side by side from the same queue consumer.
+- Queued events are transport-agnostic; the transport is chosen at consume time, so switching it also applies to messages already in the queue.
+- Data Manager rejects GA events older than **72 hours** — messages that aged past the window (e.g. a consumer outage) are dropped with a log entry instead of being retried forever.
+- Data Manager item quantities are integers; fractional quantities (partial refunds) are rounded, while the monetary value stays exact.
+- Permanent Data Manager errors (invalid argument, missing property access) fail the queue job immediately and show up in the queue's failure list; transient errors retry with backoff.
 
 ### Debug
 
-Enable debug mode in the openmage system config `System > Configuration > Sales > Google API > Measurement Protocol`.
+Enable debug mode in the system config (gated by `System > Developer > Developer Client Restrictions`). Both transports log to the same file; Data Manager entries include the Google-assigned `requestId`.
 
 ```log
 2024-06-10T18:28:24+00:00 DEBUG (7): {"client_id":"2131884568.1715846325","timestamp_micros":1718044092903759,"non_personalized_ads":false,"user_id":"140","events":[{"name":"page_view","params":{"engagement_time_msec":1,"page_location":"https://example.com/customer/account/index/","page_title":"Create New Customer Account"}}]}
@@ -62,6 +93,10 @@ Enable debug mode in the openmage system config `System > Configuration > Sales 
   "validationMessages": [ ]
 }
 ```
+
+## Upgrading from v2.x
+
+No action needed: the transport defaults to Measurement Protocol and the existing `measurement_id`/`api_secret` config keeps working unchanged. The 2.x branch remains the MP-only maintenance line.
 
 ## License
 
