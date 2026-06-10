@@ -27,6 +27,9 @@
             <handlers>
                 <Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>gameasurementprotocol/api</Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>
             </handlers>
+            <routing>
+                <Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>analytics</Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>
+            </routing>
         </hirale_queue>
     </global>
     <frontend>
