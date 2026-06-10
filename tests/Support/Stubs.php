@@ -197,6 +197,33 @@ class RecordingApi extends \Hirale_GAMeasurementProtocol_Model_Api
     }
 }
 
+class RecordingDataManagerApi extends RecordingApi
+{
+    /** @var list<array{request:\Google\Ads\DataManager\V1\IngestEventsRequest,key:array<string,mixed>}> */
+    public array $ingests = [];
+
+    public ?Throwable $nextIngestException = null;
+
+    public string $nextRequestId = 'req-123';
+
+    #[\Override]
+    protected function _ingestEvents(\Google\Ads\DataManager\V1\IngestEventsRequest $request, array $serviceAccountKey): \Google\Ads\DataManager\V1\IngestEventsResponse
+    {
+        if ($this->nextIngestException !== null) {
+            $exception = $this->nextIngestException;
+            $this->nextIngestException = null;
+            throw $exception;
+        }
+
+        $this->ingests[] = ['request' => $request, 'key' => $serviceAccountKey];
+
+        $response = new \Google\Ads\DataManager\V1\IngestEventsResponse();
+        $response->setRequestId($this->nextRequestId);
+
+        return $response;
+    }
+}
+
 class ProductStub
 {
     public function __construct(

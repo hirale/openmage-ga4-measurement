@@ -1,0 +1,208 @@
+<?php
+
+declare(strict_types=1);
+
+namespace HiraleGAMeasurementProtocol\Tests\Unit;
+
+use Google\ApiCore\ApiException;
+use Google\Rpc\Code;
+use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
+use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
+use HiraleGAMeasurementProtocol\Tests\Support\RecordingDataManagerApi;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Messenger\Exception\UnrecoverableExceptionInterface;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+
+class DataManagerApiTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        \Mage::reset();
+        \Mage::$helpers['core'] = new CoreHelperStub();
+        \Mage::$singletons['core/session'] = new CoreSessionStub();
+        \Mage::$helpers['gameasurementprotocol'] = new \Hirale_GAMeasurementProtocol_Helper_Data();
+        \Mage::$config = ['__null__' => [], '1' => [], '7' => []];
+    }
+
+    protected function tearDown(): void
+    {
+        \Mage::reset();
+    }
+
+    private function configureDataManagerStore(string $storeId = '7'): void
+    {
+        $key = (string) json_encode([
+            'type' => 'service_account',
+            'private_key' => "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
+            'client_email' => 'events@demo.iam.gserviceaccount.com',
+            'token_uri' => 'https://oauth2.googleapis.com/token',
+        ]);
+
+        \Mage::$config[$storeId]['google/measurement/transport'] = 'data_manager';
+        \Mage::$config[$storeId]['google/measurement/measurement_id'] = 'G-STORE' . $storeId;
+        \Mage::$config[$storeId]['google/measurement/dm_property_id'] = '213025502';
+        \Mage::$config[$storeId]['google/measurement/dm_service_account_key'] = 'enc:' . base64_encode($key);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function envelope(): array
+    {
+        return [
+            'client_id' => '111.222',
+            'timestamp_micros' => (int) (microtime(true) * 1_000_000),
+            'events' => [['name' => 'purchase', 'params' => ['currency' => 'USD', 'value' => 10.0]]],
+        ];
+    }
+
+    private function message(int $storeId = 7, bool $debugMode = false, ?array $events = null): \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage
+    {
+        return new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: $events ?? $this->envelope(),
+            storeId: $storeId,
+            debugMode: $debugMode,
+        );
+    }
+
+    public function testDataManagerTransportIngestsTranslatedRequestInsteadOfPosting(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api($this->message());
+
+        self::assertSame([], $api->posts, 'MP endpoint must not be hit on the Data Manager transport');
+        self::assertCount(1, $api->ingests);
+
+        $request = $api->ingests[0]['request'];
+        $destination = $request->getDestinations()[0];
+        self::assertSame('G-STORE7', $destination->getProductDestinationId());
+        self::assertSame('213025502', $destination->getOperatingAccount()->getAccountId());
+        self::assertCount(1, $request->getEvents());
+        self::assertSame('purchase', $request->getEvents()[0]->getEventName());
+        self::assertFalse($request->getValidateOnly());
+    }
+
+    public function testMeasurementProtocolRemainsDefaultTransport(): void
+    {
+        \Mage::$config['7']['google/measurement/measurement_id'] = 'G-STORE7';
+        \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
+
+        $api = new RecordingDataManagerApi();
+        $api($this->message());
+
+        self::assertCount(1, $api->posts);
+        self::assertSame([], $api->ingests);
+    }
+
+    public function testSkipsQuietlyWhenDataManagerConfigIncomplete(): void
+    {
+        $this->configureDataManagerStore();
+        unset(\Mage::$config['7']['google/measurement/dm_service_account_key']);
+
+        $api = new RecordingDataManagerApi();
+        $api($this->message());
+
+        self::assertSame([], $api->ingests);
+        self::assertSame([], $api->posts);
+    }
+
+    public function testStaleEnvelopeIsDroppedWithWarningInsteadOfIngested(): void
+    {
+        $this->configureDataManagerStore();
+
+        $events = $this->envelope();
+        $events['timestamp_micros'] = (time() - 73 * 3600) * 1_000_000;
+
+        $api = new RecordingDataManagerApi();
+        $api($this->message(events: $events));
+
+        self::assertSame([], $api->ingests);
+        self::assertNotEmpty(\Mage::$logs);
+        self::assertStringContainsString('[stale]', (string) \Mage::$logs[0]['message']);
+    }
+
+    public function testRetryableApiErrorBecomesPlainRuntimeException(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->nextIngestException = new ApiException('backend unavailable', Code::UNAVAILABLE, 'UNAVAILABLE');
+
+        try {
+            $api($this->message());
+            self::fail('Expected a RuntimeException for a retryable API error');
+        } catch (\RuntimeException $e) {
+            self::assertNotInstanceOf(UnrecoverableExceptionInterface::class, $e, 'retryable errors must keep the queue retry path open');
+            self::assertStringContainsString('UNAVAILABLE', $e->getMessage());
+        }
+    }
+
+    public function testPermanentApiErrorFailsUnrecoverably(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->nextIngestException = new ApiException('event name is reserved', Code::INVALID_ARGUMENT, 'INVALID_ARGUMENT');
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessageMatches('/INVALID_ARGUMENT/');
+
+        $api($this->message());
+    }
+
+    public function testPermissionDeniedFailsUnrecoverably(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->nextIngestException = new ApiException('service account lacks property access', Code::PERMISSION_DENIED, 'PERMISSION_DENIED');
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+
+        $api($this->message());
+    }
+
+    public function testCredentialExchangeFailureIsRetryable(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->nextIngestException = new \Exception('could not fetch access token');
+
+        try {
+            $api($this->message());
+            self::fail('Expected a RuntimeException for a transport-level failure');
+        } catch (\RuntimeException $e) {
+            self::assertNotInstanceOf(UnrecoverableExceptionInterface::class, $e);
+            self::assertStringContainsString('could not fetch access token', $e->getMessage());
+        }
+    }
+
+    public function testDebugModeLogsRequestIdAndRequestJson(): void
+    {
+        $this->configureDataManagerStore();
+        \Mage::$config['7']['google/measurement/log_file'] = 'ga_store_7.log';
+
+        $api = new RecordingDataManagerApi();
+        $api->nextRequestId = 'req-smoke-1';
+        $api($this->message(debugMode: true));
+
+        self::assertNotEmpty(\Mage::$logs);
+        self::assertSame('ga_store_7.log', \Mage::$logs[0]['file']);
+        $logMessage = (string) \Mage::$logs[0]['message'];
+        self::assertStringContainsString('DM requestId=req-smoke-1', $logMessage);
+        self::assertStringContainsString('purchase', $logMessage);
+    }
+
+    public function testServiceAccountKeyIsDecryptedBeforeReachingTheClient(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api($this->message());
+
+        self::assertSame('events@demo.iam.gserviceaccount.com', $api->ingests[0]['key']['client_email']);
+    }
+}
