@@ -147,17 +147,9 @@ if (!class_exists('Mage')) {
     }
 }
 
-if (!interface_exists('Hirale_Queue_Model_TaskHandlerInterface')) {
-    interface Hirale_Queue_Model_TaskHandlerInterface
-    {
-        /**
-         * @param array<string, mixed> $task
-         */
-        public function handle(array $task): void;
-    }
-}
-
-require_once __DIR__ . '/../src/app/code/community/Hirale/GAMeasurementProtocol/Helper/Data.php';
-require_once __DIR__ . '/../src/app/code/community/Hirale/GAMeasurementProtocol/Model/Api.php';
+require_once __DIR__ . '/Support/QueueBusStub.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Helper/Data.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Message/MeasurementEventMessage.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Api.php';
 require_once __DIR__ . '/Support/Stubs.php';
-require_once __DIR__ . '/../src/app/code/community/Hirale/GAMeasurementProtocol/Model/Observer.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Observer.php';

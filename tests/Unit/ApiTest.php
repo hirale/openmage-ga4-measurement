@@ -26,49 +26,46 @@ class ApiTest extends TestCase
         \Mage::reset();
     }
 
-    public function testHandleStripsStoreIdAndDebugModeBeforeSending(): void
+    public function testInvokePostsEventsEnvelopeVerbatim(): void
     {
         \Mage::$config['7']['google/measurement/measurement_id'] = 'G-STORE7';
         \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
 
         $api = new RecordingApi();
-        $api->handle([
-            'data' => [
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: [
                 'client_id' => '111.222',
                 'events' => [['name' => 'add_to_cart', 'params' => []]],
-                '_store_id' => 7,
-                '_debug_mode' => true,
             ],
-        ]);
+            storeId: 7,
+        ));
 
         self::assertCount(1, $api->posts);
         self::assertStringContainsString('measurement_id=G-STORE7', $api->posts[0]['url']);
         self::assertStringContainsString('api_secret=secret-7', $api->posts[0]['url']);
 
         $body = json_decode($api->posts[0]['body'], true);
-        self::assertIsArray($body);
-        self::assertArrayNotHasKey('_store_id', $body);
-        self::assertArrayNotHasKey('_debug_mode', $body);
-        self::assertArrayHasKey('events', $body);
+        self::assertSame([
+            'client_id' => '111.222',
+            'events' => [['name' => 'add_to_cart', 'params' => []]],
+        ], $body);
     }
 
-    public function testHandleSkipsPostWhenStoreIsMissingMeasurementId(): void
+    public function testInvokeSkipsPostWhenStoreIsMissingMeasurementId(): void
     {
         \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
         // No measurement_id configured for store 1.
 
         $api = new RecordingApi();
-        $api->handle([
-            'data' => [
-                'events' => [['name' => 'login', 'params' => []]],
-                '_store_id' => 1,
-            ],
-        ]);
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'login', 'params' => []]]],
+            storeId: 1,
+        ));
 
         self::assertSame([], $api->posts);
     }
 
-    public function testHandleScopesHelperToStoreIdFromPayload(): void
+    public function testInvokeScopesHelperToMessageStoreId(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
         \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
@@ -76,18 +73,16 @@ class ApiTest extends TestCase
         \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
 
         $api = new RecordingApi();
-        $api->handle([
-            'data' => [
-                'events' => [['name' => 'view_item', 'params' => []]],
-                '_store_id' => 7,
-            ],
-        ]);
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 7,
+        ));
 
         self::assertStringContainsString('measurement_id=G-STORE7', $api->posts[0]['url']);
         self::assertStringNotContainsString('G-STORE1', $api->posts[0]['url']);
     }
 
-    public function testHandleThrowsOnCurlError(): void
+    public function testInvokeThrowsOnCurlError(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
         \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
@@ -98,15 +93,13 @@ class ApiTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Connection timed out');
 
-        $api->handle([
-            'data' => [
-                'events' => [['name' => 'view_item', 'params' => []]],
-                '_store_id' => 1,
-            ],
-        ]);
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
     }
 
-    public function testHandleLogsWhenDebugModeIsSet(): void
+    public function testInvokeLogsWhenDebugModeIsSet(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
         \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
@@ -115,14 +108,14 @@ class ApiTest extends TestCase
         $api = new RecordingApi();
         $api->nextResponse = ['http_code' => 204, 'curl_errno' => 0, 'curl_error' => ''];
 
-        $api->handle([
-            'data' => [
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: [
                 'events' => [['name' => 'view_item', 'params' => []]],
                 'timestamp_micros' => 1700000000000000,
-                '_store_id' => 1,
-                '_debug_mode' => true,
             ],
-        ]);
+            storeId: 1,
+            debugMode: true,
+        ));
 
         self::assertNotEmpty(\Mage::$logs);
         self::assertSame('ga_store_1.log', \Mage::$logs[0]['file']);

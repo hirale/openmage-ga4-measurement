@@ -1,28 +1,23 @@
 {
     "name": "hirale/openmage-ga4-measurement",
-    "type": "maho-module",
+    "type": "magento-module",
     "license": "OSL-3.0",
-    "description": "A module for integrating with the Google Analytics 4 Measurement Protocol API, built on hirale/queue.",
+    "description": "Google Analytics 4 Measurement Protocol integration for OpenMage and Maho, built on hirale/queue.",
     "keywords": [
         "maho",
         "mahoecommerce",
+        "openmage",
         "magento1",
         "ga4",
         "analytics"
     ],
     "require": {
         "php": ">=8.3",
-        "mahocommerce/maho": "^26.5",
         "hirale/queue": "^3.0 || dev-master",
         "jaybizzle/crawler-detect": "^1.2"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5"
-    },
-    "config": {
-        "allow-plugins": {
-            "mahocommerce/maho-composer-plugin": true
-        }
     },
     "autoload-dev": {
         "psr-4": {
@@ -30,12 +25,31 @@
         }
     },
     "extra": {
-        "maho-module-dir": "app/code/community/Hirale/GAMeasurementProtocol"
+        "map": [
+            [
+                "app/etc/modules/Hirale_GAMeasurementProtocol.xml",
+                "app/etc/modules/Hirale_GAMeasurementProtocol.xml"
+            ],
+            [
+                "app/code/community/Hirale/GAMeasurementProtocol",
+                "app/code/community/Hirale/GAMeasurementProtocol"
+            ]
+        ]
     },
     "scripts": {
         "test": "phpunit"
     },
     "authors": [
-        { "name": "Hirale" }
-    ]
+        {
+            "name": "Hirale"
+        }
+    ],
+    "conflict": {
+        "mahocommerce/maho": "<26.5",
+        "openmage/magento-lts": "<20.17"
+    },
+    "suggest": {
+        "mahocommerce/maho": "^26.5 — the Maho platform (alternatively openmage/magento-lts >=20.17)",
+        "magento-hackathon/magento-composer-installer": "Deploys extra.map into the OpenMage project (resolves at 1.3.2; see the hirale/queue README — Maho needs no installer plugin)"
+    }
 }

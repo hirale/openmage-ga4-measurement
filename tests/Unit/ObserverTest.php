@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace HiraleGAMeasurementProtocol\Tests\Unit;
 
+use Hirale\Queue\Bus;
 use HiraleGAMeasurementProtocol\Tests\Support\AppStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\GoogleAnalyticsHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\HttpHelperStub;
-use HiraleGAMeasurementProtocol\Tests\Support\QueueStub;
 use HiraleGAMeasurementProtocol\Tests\Support\StringHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\StoreStub;
 use HiraleGAMeasurementProtocol\Tests\Support\UrlHelperStub;
@@ -17,19 +17,16 @@ use PHPUnit\Framework\TestCase;
 
 class ObserverTest extends TestCase
 {
-    private QueueStub $queue;
-
     protected function setUp(): void
     {
         \Mage::reset();
-        $this->queue = new QueueStub();
+        Bus::reset();
         \Mage::$helpers['gameasurementprotocol'] = new \Hirale_GAMeasurementProtocol_Helper_Data();
         \Mage::$helpers['googleanalytics'] = new GoogleAnalyticsHelperStub();
         \Mage::$helpers['core/http'] = new HttpHelperStub();
         \Mage::$helpers['core/string'] = new StringHelperStub();
         \Mage::$helpers['core/url'] = new UrlHelperStub();
         \Mage::$helpers['core'] = new CoreHelperStub();
-        \Mage::$models['hirale_queue/queue'] = $this->queue;
         \Mage::$singletons['core/session'] = new CoreSessionStub();
         \Mage::$singletons['customer/session'] = new \Mage_Customer_Model_Session();
         \Mage::$app = new AppStub(1);
@@ -45,21 +42,22 @@ class ObserverTest extends TestCase
     protected function tearDown(): void
     {
         \Mage::reset();
+        Bus::reset();
     }
 
-    public function testAddToQueueIncludesStoreIdAndDebugFlagInPayload(): void
+    public function testAddToQueueDispatchesMessageWithStoreIdAndDebugFlag(): void
     {
         $observer = new ObserverAccessor();
         $observer->callAddToQueue(['events' => [['name' => 'login', 'params' => []]]], 7);
 
-        self::assertCount(1, $this->queue->calls);
-        $call = $this->queue->calls[0];
-        self::assertSame('Hirale_GAMeasurementProtocol_Model_Api', $call['handler']);
-        self::assertSame(7, $call['payload']['_store_id']);
-        self::assertFalse($call['payload']['_debug_mode']);
-        self::assertSame('hirale_gameasurementprotocol', $call['options']['metadata']['source']);
-        self::assertSame(7, $call['options']['metadata']['store_id']);
-        self::assertSame(['login'], $call['options']['metadata']['event_names']);
+        self::assertCount(1, Bus::$dispatches);
+        $message = Bus::$dispatches[0]['message'];
+        self::assertInstanceOf(\Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage::class, $message);
+        self::assertSame(7, $message->storeId);
+        self::assertFalse($message->debugMode);
+        // Internal flags stay on the message; the posted envelope is clean.
+        self::assertArrayNotHasKey('_store_id', $message->events);
+        self::assertArrayNotHasKey('_debug_mode', $message->events);
     }
 
     public function testAddToQueueFallsBackToCurrentStoreWhenStoreIdMissing(): void
@@ -70,7 +68,7 @@ class ObserverTest extends TestCase
         $observer = new ObserverAccessor();
         $observer->callAddToQueue(['events' => [['name' => 'page_view', 'params' => []]]], null);
 
-        self::assertSame(42, $this->queue->calls[0]['payload']['_store_id']);
+        self::assertSame(42, Bus::$dispatches[0]['message']->storeId);
     }
 
     public function testAddToQueueStampsUserAgentAndPlatformOnEachEvent(): void
@@ -86,7 +84,7 @@ class ObserverTest extends TestCase
             ],
         ], 1);
 
-        $events = $this->queue->calls[0]['payload']['events'];
+        $events = Bus::$dispatches[0]['message']->events['events'];
         self::assertCount(2, $events);
         foreach ($events as $event) {
             self::assertSame('TestUA/1.0', $event['params']['user_agent']);
@@ -94,9 +92,9 @@ class ObserverTest extends TestCase
         }
     }
 
-    public function testAddToQueueSwallowsQueueExceptions(): void
+    public function testAddToQueueSwallowsDispatchExceptions(): void
     {
-        $this->queue->nextException = new \RuntimeException('redis down');
+        Bus::$nextException = new \RuntimeException('redis down');
 
         $observer = new ObserverAccessor();
         $observer->callAddToQueue(['events' => [['name' => 'login', 'params' => []]]], 1);
