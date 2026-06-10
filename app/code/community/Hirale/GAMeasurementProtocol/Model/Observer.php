@@ -13,10 +13,6 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * @var Mage_GoogleAnalytics_Helper_Data
      */
     protected $gaHelper;
-    /**
-     * @var Hirale_Queue_Model_Task
-     */
-    protected $queue;
     protected $CrawlerDetect;
 
     public function __construct()
@@ -122,17 +118,6 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         return $base;
     }
 
-    protected function getQueue()
-    {
-        if ($this->queue === null) {
-            $queue = Mage::getModel('hirale_queue/queue');
-            if (!is_object($queue) || !method_exists($queue, 'enqueue')) {
-                throw new RuntimeException('Hirale Queue service is unavailable.');
-            }
-            $this->queue = $queue;
-        }
-        return $this->queue;
-    }
 
     protected function getCrawlerDetect()
     {
