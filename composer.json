@@ -14,7 +14,8 @@
     "require": {
         "php": ">=8.3",
         "hirale/queue": "^3.0 || dev-master",
-        "jaybizzle/crawler-detect": "^1.2"
+        "jaybizzle/crawler-detect": "^1.2",
+        "googleads/data-manager": "^0.4"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5"
@@ -50,6 +51,7 @@
     },
     "suggest": {
         "mahocommerce/maho": "^26.5 — the Maho platform (alternatively openmage/magento-lts >=20.17)",
-        "magento-hackathon/magento-composer-installer": "Deploys extra.map into the OpenMage project (resolves at 1.3.2; see the hirale/queue README — Maho needs no installer plugin)"
+        "magento-hackathon/magento-composer-installer": "Deploys extra.map into the OpenMage project (resolves at 1.3.2; see the hirale/queue README — Maho needs no installer plugin)",
+        "ext-protobuf": "Faster protobuf encoding for the Data Manager API transport (pure PHP works without it; ext-grpc is not needed — the module uses the REST transport)"
     }
 }

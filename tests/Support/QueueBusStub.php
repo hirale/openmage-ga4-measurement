@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 namespace Hirale\Queue {
-    if (!class_exists(Bus::class)) {
+    if (!class_exists(Bus::class, false)) {
         /**
          * Recording stub for the static Bus accessor from hirale/queue. The
-         * real package is not installed in the unit suite; tests assert
-         * against the recorded dispatches.
+         * real package sits in vendor (composer dependency), but the stub is
+         * loaded first and must win: no-autoload class_exists keeps the real
+         * Bus from being pulled in. Tests assert against the recorded
+         * dispatches.
          */
         class Bus
         {
@@ -60,7 +62,7 @@ namespace Hirale\Queue {
 }
 
 namespace Symfony\Component\Messenger\Stamp {
-    if (!class_exists(DelayStamp::class)) {
+    if (!class_exists(DelayStamp::class, false)) {
         class DelayStamp
         {
             public function __construct(public readonly int $delay)
