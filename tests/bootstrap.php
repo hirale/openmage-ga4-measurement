@@ -270,3 +270,4 @@ require_once __DIR__ . '/Support/Stubs.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Observer.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/System/Config/Source/Transport.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/System/Config/Backend/ServiceAccountKey.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/DataManager/Translator.php';
