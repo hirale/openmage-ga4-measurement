@@ -158,4 +158,95 @@ class HelperDataTest extends TestCase
         self::assertSame(1.23, $helper->formatPrice(1.234));
         self::assertSame(1.24, $helper->formatPrice(1.236));
     }
+
+    public function testGetTransportDefaultsToMeasurementProtocol(): void
+    {
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertSame(\Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_MEASUREMENT_PROTOCOL, $helper->getTransport(1));
+    }
+
+    public function testGetTransportFallsBackOnUnknownValue(): void
+    {
+        \Mage::$config['1']['google/measurement/transport'] = 'carrier_pigeon';
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertSame(\Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_MEASUREMENT_PROTOCOL, $helper->getTransport(1));
+    }
+
+    public function testGetTransportIsStoreScoped(): void
+    {
+        \Mage::$config['1']['google/measurement/transport'] = 'data_manager';
+        \Mage::$config['2']['google/measurement/transport'] = 'measurement_protocol';
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertSame(\Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER, $helper->getTransport(1));
+        self::assertSame(\Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_MEASUREMENT_PROTOCOL, $helper->getTransport(2));
+        // Cache hit must stay scope-correct.
+        self::assertSame(\Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER, $helper->getTransport(1));
+    }
+
+    public function testGetDataManagerPropertyIdReturnsNullWhenUnconfigured(): void
+    {
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertNull($helper->getDataManagerPropertyId(1));
+    }
+
+    public function testGetDataManagerPropertyIdIsStoreScoped(): void
+    {
+        \Mage::$config['1']['google/measurement/dm_property_id'] = '213025502';
+        \Mage::$config['2']['google/measurement/dm_property_id'] = '987654321';
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertSame('213025502', $helper->getDataManagerPropertyId(1));
+        self::assertSame('987654321', $helper->getDataManagerPropertyId(2));
+    }
+
+    public function testGetServiceAccountKeyDecryptsAndDecodes(): void
+    {
+        $json = (string) json_encode([
+            'type' => 'service_account',
+            'client_email' => 'events@project.iam.gserviceaccount.com',
+            'private_key' => "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
+            'token_uri' => 'https://oauth2.googleapis.com/token',
+        ]);
+        \Mage::$config['1']['google/measurement/dm_service_account_key'] = 'enc:' . base64_encode($json);
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+        $key = $helper->getServiceAccountKey(1);
+
+        self::assertIsArray($key);
+        self::assertSame('events@project.iam.gserviceaccount.com', $key['client_email']);
+        self::assertSame('service_account', $key['type']);
+    }
+
+    public function testGetServiceAccountKeyAcceptsPlainJsonStoredValue(): void
+    {
+        // Decrypting a never-encrypted value yields garbage; the helper then
+        // falls back to decoding the raw stored string.
+        $json = (string) json_encode(['type' => 'service_account', 'client_email' => 'plain@x.iam.gserviceaccount.com']);
+        \Mage::$config['1']['google/measurement/dm_service_account_key'] = $json;
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+        $key = $helper->getServiceAccountKey(1);
+
+        self::assertIsArray($key);
+        self::assertSame('plain@x.iam.gserviceaccount.com', $key['client_email']);
+    }
+
+    public function testGetServiceAccountKeyReturnsNullWhenMissingOrGarbage(): void
+    {
+        \Mage::$config['2']['google/measurement/dm_service_account_key'] = 'enc:' . base64_encode('not json');
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertNull($helper->getServiceAccountKey(1));
+        self::assertNull($helper->getServiceAccountKey(2));
+        // Cached negative result stays null.
+        self::assertNull($helper->getServiceAccountKey(2));
+    }
 }

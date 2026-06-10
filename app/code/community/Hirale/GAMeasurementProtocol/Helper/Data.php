@@ -7,6 +7,9 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
     public const GA4_MEASUREMENT_PROTOCOL_URL = 'https://www.google-analytics.com/mp/collect';
     public const GTAG_URL = 'https://www.googletagmanager.com/gtag/destination';
 
+    public const TRANSPORT_MEASUREMENT_PROTOCOL = 'measurement_protocol';
+    public const TRANSPORT_DATA_MANAGER = 'data_manager';
+
     private const DEFAULT_LOG_FILE = 'ga_measurement.log';
     private const CACHE_KEY_NULL = '__current__';
 
@@ -24,6 +27,15 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 
     /** @var array<string, bool> */
     private array $_isDebugMode = [];
+
+    /** @var array<string, string> */
+    private array $_transport = [];
+
+    /** @var array<string, string|null> */
+    private array $_dataManagerPropertyId = [];
+
+    /** @var array<string, array<string, mixed>|null> */
+    private array $_serviceAccountKey = [];
 
     public function isMeasurementEnabled(?int $storeId = null): bool
     {
@@ -80,6 +92,60 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
         }
 
         return $this->_measurementId[$cacheKey];
+    }
+
+    /**
+     * Effective transport for a store. Unknown or empty values fall back to
+     * the Measurement Protocol so pre-v3 stores keep their behavior.
+     */
+    public function getTransport(?int $storeId = null): string
+    {
+        $cacheKey = $this->_cacheKey($storeId);
+        if (!array_key_exists($cacheKey, $this->_transport)) {
+            $value = Mage::getStoreConfig('google/measurement/transport', $storeId);
+            $this->_transport[$cacheKey] = $value === self::TRANSPORT_DATA_MANAGER
+                ? self::TRANSPORT_DATA_MANAGER
+                : self::TRANSPORT_MEASUREMENT_PROTOCOL;
+        }
+
+        return $this->_transport[$cacheKey];
+    }
+
+    public function getDataManagerPropertyId(?int $storeId = null): ?string
+    {
+        $cacheKey = $this->_cacheKey($storeId);
+        if (!array_key_exists($cacheKey, $this->_dataManagerPropertyId)) {
+            $value = Mage::getStoreConfig('google/measurement/dm_property_id', $storeId);
+            $this->_dataManagerPropertyId[$cacheKey] = is_string($value) && $value !== '' ? $value : null;
+        }
+
+        return $this->_dataManagerPropertyId[$cacheKey];
+    }
+
+    /**
+     * Decoded service-account key file for the Data Manager transport. The
+     * config value is encrypted at rest by the backend model; a plain-JSON
+     * value (e.g. seeded directly into core_config_data on a dev box) is
+     * accepted as a fallback.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getServiceAccountKey(?int $storeId = null): ?array
+    {
+        $cacheKey = $this->_cacheKey($storeId);
+        if (!array_key_exists($cacheKey, $this->_serviceAccountKey)) {
+            $this->_serviceAccountKey[$cacheKey] = null;
+            $raw = Mage::getStoreConfig('google/measurement/dm_service_account_key', $storeId);
+            if (is_string($raw) && $raw !== '') {
+                $decoded = json_decode((string) Mage::helper('core')->decrypt($raw), true);
+                if (!is_array($decoded)) {
+                    $decoded = json_decode($raw, true);
+                }
+                $this->_serviceAccountKey[$cacheKey] = is_array($decoded) ? $decoded : null;
+            }
+        }
+
+        return $this->_serviceAccountKey[$cacheKey];
     }
 
     public function getApiSecret(?int $storeId = null): ?string

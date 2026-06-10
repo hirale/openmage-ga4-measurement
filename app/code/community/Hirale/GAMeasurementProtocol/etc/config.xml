@@ -2,13 +2,14 @@
 <config>
     <modules>
         <Hirale_GAMeasurementProtocol>
-            <version>2.1.0</version>
+            <version>3.0.0</version>
         </Hirale_GAMeasurementProtocol>
     </modules>
     <default>
         <google>
             <measurement>
                 <log_file>ga_measurement.log</log_file>
+                <transport>measurement_protocol</transport>
             </measurement>
         </google>
     </default>

@@ -36,6 +36,90 @@ if (!class_exists('Mage_Customer_Model_Session')) {
     }
 }
 
+if (!class_exists('Mage_Core_Exception')) {
+    class Mage_Core_Exception extends Exception
+    {
+    }
+}
+
+if (!class_exists('Mage_Core_Model_Config_Data')) {
+    /**
+     * Minimal replica of the platform config-data backend lifecycle: a data
+     * bag whose save() runs the _beforeSave hook.
+     */
+    class Mage_Core_Model_Config_Data
+    {
+        /** @var array<string, mixed> */
+        protected array $_data = [];
+
+        public function getValue(): mixed
+        {
+            return $this->_data['value'] ?? null;
+        }
+
+        public function setValue(mixed $value): static
+        {
+            $this->_data['value'] = $value;
+
+            return $this;
+        }
+
+        public function getOldValue(): mixed
+        {
+            return $this->_data['old_value'] ?? null;
+        }
+
+        public function setOldValue(mixed $value): static
+        {
+            $this->_data['old_value'] = $value;
+
+            return $this;
+        }
+
+        public function save(): static
+        {
+            $this->_beforeSave();
+
+            return $this;
+        }
+
+        protected function _beforeSave()
+        {
+            return $this;
+        }
+    }
+}
+
+if (!class_exists('Mage_Adminhtml_Model_System_Config_Backend_Encrypted')) {
+    /**
+     * Replica of the platform encrypted backend's _beforeSave/getOldValue
+     * semantics: an all-asterisks (obscured) value falls back to the stored
+     * old value, anything non-empty is encrypted via the core helper.
+     */
+    class Mage_Adminhtml_Model_System_Config_Backend_Encrypted extends Mage_Core_Model_Config_Data
+    {
+        #[Override]
+        protected function _beforeSave()
+        {
+            $value = (string) $this->getValue();
+            if (preg_match('/^\*+$/', $value)) {
+                $value = (string) $this->getOldValue();
+            }
+            if (!empty($value) && ($encrypted = Mage::helper('core')->encrypt($value))) {
+                $this->setValue($encrypted);
+            }
+
+            return $this;
+        }
+
+        #[Override]
+        public function getOldValue(): mixed
+        {
+            return Mage::helper('core')->decrypt((string) parent::getOldValue());
+        }
+    }
+}
+
 if (!class_exists('Mage')) {
     class Mage
     {
@@ -184,3 +268,5 @@ require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Mess
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Api.php';
 require_once __DIR__ . '/Support/Stubs.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Observer.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/System/Config/Source/Transport.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/System/Config/Backend/ServiceAccountKey.php';

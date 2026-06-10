@@ -42,6 +42,31 @@ class CoreHelperStub
     {
         return $this->devAllowed;
     }
+
+    public function encrypt(?string $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        return 'enc:' . base64_encode($value);
+    }
+
+    /**
+     * Mirrors the platform behavior closely enough for tests: decrypting a
+     * value that was never encrypted yields garbage, not the input.
+     */
+    public function decrypt(?string $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        if (str_starts_with($value, 'enc:')) {
+            return (string) base64_decode(substr($value, 4), true);
+        }
+
+        return md5($value);
+    }
 }
 
 class GoogleAnalyticsHelperStub
