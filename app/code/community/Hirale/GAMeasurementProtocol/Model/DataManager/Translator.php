@@ -24,7 +24,7 @@ use Google\Protobuf\Timestamp;
  * proto classes, and the only place besides the handler/tester that touches
  * the alpha googleads/data-manager surface.
  */
-final class Hirale_GAMeasurementProtocol_Model_DataManager_Translator
+class Hirale_GAMeasurementProtocol_Model_DataManager_Translator
 {
     /**
      * MP params that map to typed Event fields; everything else becomes an
@@ -70,6 +70,12 @@ final class Hirale_GAMeasurementProtocol_Model_DataManager_Translator
      */
     public function toEvents(array $envelope): array
     {
+        // Proto string fields reject non-UTF8 bytes (GPBUtil checkString)
+        // and json_encode returns false on them — sanitize the whole
+        // envelope once at the boundary so storefront data (search terms,
+        // page titles, cookies) can never abort translation.
+        $envelope = $this->utf8Deep($envelope);
+
         $events = [];
         $mpEvents = $envelope['events'] ?? [];
         if (is_array($mpEvents)) {
@@ -242,5 +248,34 @@ final class Hirale_GAMeasurementProtocol_Model_DataManager_Translator
         }
 
         return (string) $value;
+    }
+
+    /**
+     * Replace ill-formed UTF-8 sequences in every string key and value.
+     */
+    private function utf8Deep(array $values): array
+    {
+        $clean = [];
+        foreach ($values as $key => $value) {
+            $cleanKey = is_string($key) ? $this->utf8($key) : $key;
+            if (is_array($value)) {
+                $clean[$cleanKey] = $this->utf8Deep($value);
+            } elseif (is_string($value)) {
+                $clean[$cleanKey] = $this->utf8($value);
+            } else {
+                $clean[$cleanKey] = $value;
+            }
+        }
+
+        return $clean;
+    }
+
+    private function utf8(string $value): string
+    {
+        if (preg_match('//u', $value) === 1) {
+            return $value;
+        }
+
+        return (string) mb_convert_encoding($value, 'UTF-8', 'UTF-8');
     }
 }

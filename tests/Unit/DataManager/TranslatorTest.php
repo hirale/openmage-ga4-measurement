@@ -242,4 +242,33 @@ class TranslatorTest extends TestCase
     {
         self::assertSame([], $this->translator->toEvents(['client_id' => 'cid.1']));
     }
+
+    public function testNonUtf8ScalarParamIsSanitizedInsteadOfThrowing(): void
+    {
+        $envelope = [
+            'client_id' => 'cid.1',
+            'events' => [['name' => 'search', 'params' => ['search_term' => "caf\xE9"]]],
+        ];
+
+        $event = $this->translator->toEvents($envelope)[0];
+
+        $params = $this->parameterMap($event->getAdditionalEventParameters());
+        self::assertArrayHasKey('search_term', $params);
+        self::assertSame(1, preg_match('//u', $params['search_term']), 'sanitized value must be valid UTF-8');
+        self::assertStringStartsWith('caf', $params['search_term']);
+    }
+
+    public function testNonUtf8InsideArrayParamStillEncodesToJson(): void
+    {
+        $envelope = [
+            'client_id' => 'cid.1',
+            'events' => [['name' => 'x', 'params' => ['payload' => ['note' => "caf\xE9"]]]],
+        ];
+
+        $event = $this->translator->toEvents($envelope)[0];
+
+        $params = $this->parameterMap($event->getAdditionalEventParameters());
+        self::assertNotSame('', $params['payload'], 'json_encode must not silently collapse to an empty string');
+        self::assertIsArray(json_decode($params['payload'], true));
+    }
 }

@@ -6,6 +6,7 @@ use Google\Ads\DataManager\V1\IngestEventsRequest;
 use Google\Ads\DataManager\V1\IngestEventsResponse;
 use Google\ApiCore\ApiException;
 use Google\Rpc\Code;
+use GuzzleHttp\Exception\ClientException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 class Hirale_GAMeasurementProtocol_Model_Api
@@ -113,15 +114,30 @@ class Hirale_GAMeasurementProtocol_Model_Api
             return;
         }
 
-        $request = $this->_getTranslator()->toIngestEventsRequest($payload, $propertyId, $measurementId);
+        try {
+            $request = $this->_getTranslator()->toIngestEventsRequest($payload, $propertyId, $measurementId);
+        } catch (Throwable $e) {
+            // Translation failures are deterministic properties of the
+            // payload — replaying the message reproduces them, so fail the
+            // job once instead of burning retries.
+            throw new UnrecoverableMessageHandlingException('Data Manager translation failed: ' . $e->getMessage(), 0, $e);
+        }
 
         try {
             $response = $this->_ingestEvents($request, $serviceAccountKey);
         } catch (ApiException $e) {
             $this->_handleApiException($e);
+        } catch (LogicException | UnexpectedValueException $e) {
+            // google/auth rejects a malformed key at client construction
+            // (InvalidArgumentException) or while signing (DomainException,
+            // UnexpectedValueException) — deterministic misconfiguration.
+            throw new UnrecoverableMessageHandlingException('Data Manager credentials invalid: ' . $e->getMessage(), 0, $e);
+        } catch (ClientException $e) {
+            // 4xx from the OAuth token endpoint (invalid_grant & co.) —
+            // retrying with the same key cannot succeed.
+            throw new UnrecoverableMessageHandlingException('Data Manager auth rejected: ' . $e->getMessage(), 0, $e);
         } catch (Throwable $e) {
-            // Credential exchange / transport failures surface as plain
-            // exceptions (google/auth, Guzzle). Treat as transient.
+            // Everything else (DNS, TLS, 5xx token endpoint) is transient.
             throw new RuntimeException('Data Manager ingest failed: ' . $e->getMessage(), 0, $e);
         }
 

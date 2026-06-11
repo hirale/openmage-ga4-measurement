@@ -164,6 +164,55 @@ class DataManagerApiTest extends TestCase
         $api($this->message());
     }
 
+    public function testTranslationFailureFailsUnrecoverably(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->setTranslator(new class () extends \Hirale_GAMeasurementProtocol_Model_DataManager_Translator {
+            #[\Override]
+            public function toIngestEventsRequest(array $envelope, string $propertyId, string $measurementId, bool $validateOnly = false): \Google\Ads\DataManager\V1\IngestEventsRequest
+            {
+                throw new \Exception('Expect utf-8 encoding.');
+            }
+        });
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessageMatches('/translation failed/');
+
+        $api($this->message());
+    }
+
+    public function testMalformedCredentialErrorFailsUnrecoverably(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->nextIngestException = new \InvalidArgumentException('json key is missing the private_key field');
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessageMatches('/credentials invalid/');
+
+        $api($this->message());
+    }
+
+    public function testOauthTokenRejectionFailsUnrecoverably(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        $api->nextIngestException = new \GuzzleHttp\Exception\ClientException(
+            '400 invalid_grant',
+            new \GuzzleHttp\Psr7\Request('POST', 'https://oauth2.googleapis.com/token'),
+            new \GuzzleHttp\Psr7\Response(400),
+        );
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessageMatches('/auth rejected/');
+
+        $api($this->message());
+    }
+
     public function testCredentialExchangeFailureIsRetryable(): void
     {
         $this->configureDataManagerStore();
