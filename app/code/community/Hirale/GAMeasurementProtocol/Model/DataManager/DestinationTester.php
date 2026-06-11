@@ -108,12 +108,8 @@ class Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester
      */
     protected function ingest(IngestEventsRequest $request, array $serviceAccountKey): IngestEventsResponse
     {
-        $client = (new Hirale_GAMeasurementProtocol_Model_DataManager_ClientFactory())->create($serviceAccountKey);
-        try {
-            return $client->ingestEvents($request);
-        } finally {
-            $client->close();
-        }
+        // Clients are cached process-wide by the factory — never close them.
+        return (new Hirale_GAMeasurementProtocol_Model_DataManager_ClientFactory())->create($serviceAccountKey)->ingestEvents($request);
     }
 
     /**

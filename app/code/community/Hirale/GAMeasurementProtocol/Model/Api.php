@@ -156,12 +156,9 @@ class Hirale_GAMeasurementProtocol_Model_Api
      */
     protected function _ingestEvents(IngestEventsRequest $request, array $serviceAccountKey): IngestEventsResponse
     {
-        $client = $this->_getClientFactory()->create($serviceAccountKey);
-        try {
-            return $client->ingestEvents($request);
-        } finally {
-            $client->close();
-        }
+        // The factory caches clients (and their OAuth token caches) for the
+        // process lifetime — do not close them.
+        return $this->_getClientFactory()->create($serviceAccountKey)->ingestEvents($request);
     }
 
     protected function _handleApiException(ApiException $e): never
