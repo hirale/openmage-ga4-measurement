@@ -19,6 +19,24 @@ class Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester
     public const PACKAGE = 'googleads/data-manager';
 
     /**
+     * Normalized website/store codes from an admin request — the single
+     * home for the scope-param plumbing shared by the save observer and the
+     * AJAX controller.
+     *
+     * @return array{website: ?string, store: ?string}
+     */
+    public static function requestScope(object $request): array
+    {
+        $scope = [];
+        foreach (['website', 'store'] as $name) {
+            $value = $request->getParam($name);
+            $scope[$name] = is_string($value) && $value !== '' ? $value : null;
+        }
+
+        return $scope;
+    }
+
+    /**
      * @param array<string, mixed> $groups Raw groups[] param from the system config form.
      * @return array{transport: string, measurement_id: string, property_id: string, service_account_key: string}
      */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace HiraleGAMeasurementProtocol\Tests\Unit\DataManager;
 
+use HiraleGAMeasurementProtocol\Tests\Support\ServiceAccountKeyFixture;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -28,13 +29,7 @@ class ClientFactoryTest extends TestCase
      */
     private function key(string $email): array
     {
-        return [
-            'type' => 'service_account',
-            'client_email' => $email,
-            'private_key' => "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n",
-            'token_uri' => 'https://oauth2.googleapis.com/token',
-            'project_id' => 'demo',
-        ];
+        return ServiceAccountKeyFixture::asArray($email, 'demo');
     }
 
     public function testSameKeyReusesTheSameClientInstance(): void

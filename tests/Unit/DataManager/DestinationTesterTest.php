@@ -64,12 +64,7 @@ class DestinationTesterTest extends TestCase
 
     private function validKeyJson(): string
     {
-        return (string) json_encode([
-            'type' => 'service_account',
-            'private_key' => "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
-            'client_email' => 'events@demo.iam.gserviceaccount.com',
-            'token_uri' => 'https://oauth2.googleapis.com/token',
-        ]);
+        return \HiraleGAMeasurementProtocol\Tests\Support\ServiceAccountKeyFixture::asJson();
     }
 
     /**

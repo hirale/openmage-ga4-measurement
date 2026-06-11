@@ -25,13 +25,7 @@ class ServiceAccountKeyBackendTest extends TestCase
 
     private function validKeyJson(): string
     {
-        return (string) json_encode([
-            'type' => 'service_account',
-            'project_id' => 'demo-project',
-            'private_key' => "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
-            'client_email' => 'events@demo-project.iam.gserviceaccount.com',
-            'token_uri' => 'https://oauth2.googleapis.com/token',
-        ]);
+        return \HiraleGAMeasurementProtocol\Tests\Support\ServiceAccountKeyFixture::asJson('events@demo-project.iam.gserviceaccount.com', 'demo-project');
     }
 
     public function testValidKeyIsEncryptedOnSave(): void

@@ -279,6 +279,34 @@ class CustomerStub
     }
 }
 
+/**
+ * One canonical service-account key for every test that needs a
+ * structurally valid key file.
+ */
+final class ServiceAccountKeyFixture
+{
+    /** @return array<string, mixed> */
+    public static function asArray(string $email = 'events@demo.iam.gserviceaccount.com', ?string $projectId = null): array
+    {
+        $key = [
+            'type' => 'service_account',
+            'private_key' => "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n",
+            'client_email' => $email,
+            'token_uri' => 'https://oauth2.googleapis.com/token',
+        ];
+        if ($projectId !== null) {
+            $key['project_id'] = $projectId;
+        }
+
+        return $key;
+    }
+
+    public static function asJson(string $email = 'events@demo.iam.gserviceaccount.com', ?string $projectId = null): string
+    {
+        return (string) json_encode(self::asArray($email, $projectId));
+    }
+}
+
 class RecordingApi extends \Hirale_GAMeasurementProtocol_Model_Api
 {
     /** @var list<array{url:string,body:string}> */

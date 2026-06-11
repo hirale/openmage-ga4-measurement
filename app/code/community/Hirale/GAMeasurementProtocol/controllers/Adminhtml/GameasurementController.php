@@ -23,10 +23,11 @@ class Hirale_GAMeasurementProtocol_Adminhtml_GameasurementController extends Mag
         try {
             $request = $this->getRequest();
             $tester = new Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester();
+            $scope = Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester::requestScope($request);
             $cfg = $tester->buildConfigFromForm(
                 (array) $request->getParam('groups', []),
-                $this->_scopeParam('website'),
-                $this->_scopeParam('store'),
+                $scope['website'],
+                $scope['store'],
             );
 
             if ($cfg['transport'] !== Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER) {
@@ -56,12 +57,5 @@ class Hirale_GAMeasurementProtocol_Adminhtml_GameasurementController extends Mag
     protected function _isAllowed(): bool
     {
         return Mage::getSingleton('admin/session')->isAllowed('system/config/google');
-    }
-
-    private function _scopeParam(string $name): ?string
-    {
-        $value = $this->getRequest()->getParam($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
     }
 }

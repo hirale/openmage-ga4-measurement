@@ -32,11 +32,8 @@ class Hirale_GAMeasurementProtocol_Model_Adminhtml_Observer
         }
 
         $tester = $this->_getTester();
-        $cfg = $tester->buildConfigFromForm(
-            $groups,
-            $this->_scopeParam($request, 'website'),
-            $this->_scopeParam($request, 'store'),
-        );
+        $scope = Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester::requestScope($request);
+        $cfg = $tester->buildConfigFromForm($groups, $scope['website'], $scope['store']);
 
         if ($cfg['transport'] !== Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER) {
             return;
@@ -59,16 +56,18 @@ class Hirale_GAMeasurementProtocol_Model_Adminhtml_Observer
 
         Mage::getSingleton('adminhtml/session')->addError($message);
         $controller->setFlag('', Mage_Core_Controller_Varien_Action::FLAG_NO_DISPATCH, true);
-        $controller->getResponse()->setRedirect($this->_configEditUrl($request));
+        $controller->getResponse()->setRedirect($this->_configEditUrl($scope));
     }
 
-    private function _configEditUrl(object $request): string
+    /**
+     * @param array{website: ?string, store: ?string} $scope
+     */
+    private function _configEditUrl(array $scope): string
     {
         $params = ['section' => 'google'];
-        foreach (['website', 'store'] as $scope) {
-            $value = $this->_scopeParam($request, $scope);
+        foreach ($scope as $name => $value) {
             if ($value !== null) {
-                $params[$scope] = $value;
+                $params[$name] = $value;
             }
         }
 
@@ -82,12 +81,5 @@ class Hirale_GAMeasurementProtocol_Model_Adminhtml_Observer
         }
 
         return $this->_tester;
-    }
-
-    private function _scopeParam(object $request, string $name): ?string
-    {
-        $value = $request->getParam($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
     }
 }

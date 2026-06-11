@@ -31,12 +31,7 @@ class DataManagerApiTest extends TestCase
 
     private function configureDataManagerStore(string $storeId = '7'): void
     {
-        $key = (string) json_encode([
-            'type' => 'service_account',
-            'private_key' => "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
-            'client_email' => 'events@demo.iam.gserviceaccount.com',
-            'token_uri' => 'https://oauth2.googleapis.com/token',
-        ]);
+        $key = \HiraleGAMeasurementProtocol\Tests\Support\ServiceAccountKeyFixture::asJson();
 
         \Mage::$config[$storeId]['google/measurement/transport'] = 'data_manager';
         \Mage::$config[$storeId]['google/measurement/measurement_id'] = 'G-STORE' . $storeId;

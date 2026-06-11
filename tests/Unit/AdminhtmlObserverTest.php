@@ -106,12 +106,7 @@ class AdminhtmlObserverTest extends TestCase
 
     public function testAcceptsCompleteDataManagerConfig(): void
     {
-        $key = (string) json_encode([
-            'type' => 'service_account',
-            'private_key' => 'k',
-            'client_email' => 'events@demo.iam.gserviceaccount.com',
-            'token_uri' => 'https://oauth2.googleapis.com/token',
-        ]);
+        $key = \HiraleGAMeasurementProtocol\Tests\Support\ServiceAccountKeyFixture::asJson();
         $this->setRequest('google', [
             'transport' => ['value' => 'data_manager'],
             'measurement_id' => ['value' => 'G-TEST'],
