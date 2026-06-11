@@ -82,6 +82,7 @@ Then in the store admin:
 - Data Manager rejects GA events older than **72 hours** — messages that aged past the window (e.g. a consumer outage) are dropped with a log entry instead of being retried forever.
 - Data Manager item quantities are integers; fractional quantities (partial refunds) are rounded, while the monetary value stays exact.
 - Permanent Data Manager errors (invalid argument, missing property access) fail the queue job immediately and show up in the queue's failure list; transient errors retry with backoff.
+- **Restart queue workers after credential or transport changes.** Long-running consumers snapshot configuration (and cache the decoded service-account key plus its OAuth client) at boot. After rotating the service-account key — especially if the old key is revoked in Google Cloud — Data Manager messages fail as unrecoverable (`auth rejected`) and land in the failure list until the workers are restarted with the new config.
 
 ### Debug
 
