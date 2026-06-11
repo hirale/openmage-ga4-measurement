@@ -255,6 +255,26 @@ class DataManagerApiTest extends TestCase
         self::assertStringContainsString('purchase', $logMessage);
     }
 
+    public function testNonUtf8EnvelopeIsSanitizedBeforeTranslation(): void
+    {
+        $this->configureDataManagerStore();
+
+        $events = $this->envelope();
+        $events['events'][0]['params']['search_term'] = "caf\xE9";
+
+        $api = new RecordingDataManagerApi();
+        $api($this->message(events: $events));
+
+        self::assertCount(1, $api->ingests);
+        $params = $api->ingests[0]['request']->getEvents()[0]->getAdditionalEventParameters();
+        $map = [];
+        foreach ($params as $parameter) {
+            $map[$parameter->getParameterName()] = $parameter->getValue();
+        }
+        self::assertSame(1, preg_match('//u', $map['search_term']), 'envelope must reach the protos as valid UTF-8');
+        self::assertStringStartsWith('caf', $map['search_term']);
+    }
+
     public function testServiceAccountKeyIsDecryptedBeforeReachingTheClient(): void
     {
         $this->configureDataManagerStore();

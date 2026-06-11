@@ -41,14 +41,26 @@ class Hirale_GAMeasurementProtocol_Model_Api
 
     public function __invoke(Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage $message): void
     {
+        try {
+            // Every transport serializes the envelope — scrub ill-formed
+            // bytes once here so a future transport branch cannot forget to.
+            // (The DM translator keeps its own pass as boundary defense for
+            // direct callers; on a clean envelope it short-circuits.)
+            $payload = Hirale_GAMeasurementProtocol_Model_Utf8::deep($message->events);
+        } catch (Throwable $e) {
+            // Only environmental breakage reaches here (e.g. ext-mbstring
+            // missing on a copy-deployed host) — replaying cannot succeed.
+            throw new UnrecoverableMessageHandlingException('Envelope sanitization failed: ' . $e->getMessage(), 0, $e);
+        }
+
         $transport = $this->_getHelper()->getTransport($message->storeId);
         if ($transport === Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER) {
-            $this->_sendViaDataManager($message->events, $message->storeId, $message->debugMode);
+            $this->_sendViaDataManager($payload, $message->storeId, $message->debugMode);
 
             return;
         }
 
-        $this->_sendViaMeasurementProtocol($message->events, $message->storeId, $message->debugMode);
+        $this->_sendViaMeasurementProtocol($payload, $message->storeId, $message->debugMode);
     }
 
     /**
@@ -65,15 +77,12 @@ class Hirale_GAMeasurementProtocol_Model_Api
             return;
         }
 
-        // Same boundary rule as the Data Manager path: ill-formed bytes in
-        // storefront data must not abort serialization. Without this,
-        // json_encode returns false and an empty body would be posted —
-        // the event silently lost.
-        $payload = Hirale_GAMeasurementProtocol_Model_Utf8::deep($payload);
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
         if (!is_string($body)) {
-            // Post-sanitization this means a non-encodable scalar (INF/NAN)
-            // — a deterministic payload defect, not worth retries.
+            // __invoke sanitized the envelope, so this means a non-encodable
+            // scalar (INF/NAN) — a deterministic payload defect, not worth
+            // retries. Without the guard an empty body would be posted and
+            // the event silently lost.
             throw new UnrecoverableMessageHandlingException('Measurement Protocol payload not JSON-encodable: ' . json_last_error_msg());
         }
 
