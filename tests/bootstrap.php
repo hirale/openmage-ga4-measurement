@@ -42,6 +42,16 @@ if (!class_exists('Mage_Core_Exception')) {
     }
 }
 
+if (!class_exists('Mage_Core_Controller_Varien_Action')) {
+    /**
+     * Constant-only stub: the observer references FLAG_NO_DISPATCH.
+     */
+    class Mage_Core_Controller_Varien_Action
+    {
+        public const FLAG_NO_DISPATCH = 'no-dispatch';
+    }
+}
+
 if (!class_exists('Mage_Core_Model_Config_Data')) {
     /**
      * Minimal replica of the platform config-data backend lifecycle: a data

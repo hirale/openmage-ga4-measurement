@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace HiraleGAMeasurementProtocol\Tests\Unit;
 
+use HiraleGAMeasurementProtocol\Tests\Support\AdminSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\AppStub;
+use HiraleGAMeasurementProtocol\Tests\Support\ControllerActionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
+use HiraleGAMeasurementProtocol\Tests\Support\UrlModelStub;
 use PHPUnit\Framework\TestCase;
 
 class AdminhtmlObserverTest extends TestCase
 {
     private AppStub $app;
+    private ControllerActionStub $controller;
+    private AdminSessionStub $session;
 
     protected function setUp(): void
     {
@@ -18,6 +23,10 @@ class AdminhtmlObserverTest extends TestCase
         \Mage::$helpers['core'] = new CoreHelperStub();
         $this->app = new AppStub();
         \Mage::$app = $this->app;
+        $this->controller = new ControllerActionStub($this->app->request);
+        $this->session = new AdminSessionStub();
+        \Mage::$singletons['adminhtml/session'] = $this->session;
+        \Mage::$singletons['adminhtml/url'] = new UrlModelStub();
         \Mage::$config = ['__null__' => [], '0' => []];
     }
 
@@ -33,11 +42,12 @@ class AdminhtmlObserverTest extends TestCase
 
     private function event(): \Varien_Event_Observer
     {
-        return new \Varien_Event_Observer(new \Varien_Event());
+        return new \Varien_Event_Observer(new \Varien_Event(['controller_action' => $this->controller]));
     }
 
     /**
      * @param array<string, array{value: mixed}|null> $fields
+     * @param array<string, mixed> $extraParams
      */
     private function setRequest(string $section, array $fields = [], array $extraParams = []): void
     {
@@ -47,13 +57,20 @@ class AdminhtmlObserverTest extends TestCase
         ];
     }
 
+    private function assertSaveNotBlocked(): void
+    {
+        self::assertSame([], $this->session->errors);
+        self::assertArrayNotHasKey('no-dispatch', $this->controller->flags);
+        self::assertNull($this->controller->response->redirect);
+    }
+
     public function testIgnoresOtherConfigSections(): void
     {
         $this->setRequest('payment', ['transport' => ['value' => 'data_manager']]);
 
         $this->observer()->validateConfigOnSave($this->event());
 
-        $this->addToAssertionCount(1);
+        $this->assertSaveNotBlocked();
     }
 
     public function testIgnoresMeasurementProtocolTransport(): void
@@ -65,10 +82,10 @@ class AdminhtmlObserverTest extends TestCase
 
         $this->observer()->validateConfigOnSave($this->event());
 
-        $this->addToAssertionCount(1);
+        $this->assertSaveNotBlocked();
     }
 
-    public function testRejectsBrokenDataManagerConfigBeforeSave(): void
+    public function testBlocksSaveWithSessionErrorAndRedirectOnBrokenConfig(): void
     {
         $this->setRequest('google', [
             'transport' => ['value' => 'data_manager'],
@@ -77,10 +94,14 @@ class AdminhtmlObserverTest extends TestCase
             'dm_service_account_key' => ['value' => 'not a key file'],
         ]);
 
-        $this->expectException(\Mage_Core_Exception::class);
-        $this->expectExceptionMessageMatches('/Data Manager configuration invalid/');
-
         $this->observer()->validateConfigOnSave($this->event());
+
+        self::assertCount(1, $this->session->errors);
+        self::assertStringContainsString('Data Manager configuration invalid', $this->session->errors[0]);
+        self::assertTrue($this->controller->flags['no-dispatch'] ?? false, 'save action must not dispatch');
+        self::assertNotNull($this->controller->response->redirect);
+        self::assertStringContainsString('system_config/edit', $this->controller->response->redirect);
+        self::assertStringContainsString('section=google', $this->controller->response->redirect);
     }
 
     public function testAcceptsCompleteDataManagerConfig(): void
@@ -100,13 +121,14 @@ class AdminhtmlObserverTest extends TestCase
 
         $this->observer()->validateConfigOnSave($this->event());
 
-        $this->addToAssertionCount(1);
+        $this->assertSaveNotBlocked();
     }
 
     public function testTransportInheritedFromSavedStoreScopeTriggersValidation(): void
     {
         // Transport field not on the form (scope inherit); the saved store
-        // value selects the Data Manager — so the broken key must reject.
+        // value selects the Data Manager — so the broken key must block the
+        // save, and the redirect must keep the store scope.
         \Mage::$config['storefront_de']['google/measurement/transport'] = 'data_manager';
         $this->setRequest('google', [
             'transport' => null,
@@ -115,8 +137,23 @@ class AdminhtmlObserverTest extends TestCase
             'dm_service_account_key' => ['value' => 'broken'],
         ], ['store' => 'storefront_de']);
 
+        $this->observer()->validateConfigOnSave($this->event());
+
+        self::assertTrue($this->controller->flags['no-dispatch'] ?? false);
+        self::assertStringContainsString('store=storefront_de', (string) $this->controller->response->redirect);
+    }
+
+    public function testMissingControllerOnEventFallsBackToThrowing(): void
+    {
+        $this->setRequest('google', [
+            'transport' => ['value' => 'data_manager'],
+            'measurement_id' => ['value' => 'G-TEST'],
+            'dm_property_id' => ['value' => '213025502'],
+            'dm_service_account_key' => ['value' => 'broken'],
+        ]);
+
         $this->expectException(\Mage_Core_Exception::class);
 
-        $this->observer()->validateConfigOnSave($this->event());
+        $this->observer()->validateConfigOnSave(new \Varien_Event_Observer(new \Varien_Event()));
     }
 }

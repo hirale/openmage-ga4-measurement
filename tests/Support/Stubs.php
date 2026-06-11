@@ -124,6 +124,70 @@ class RequestStub
     }
 }
 
+class ResponseStub
+{
+    public ?string $redirect = null;
+
+    public function setRedirect(string $url, int $code = 302): self
+    {
+        $this->redirect = $url;
+
+        return $this;
+    }
+}
+
+class ControllerActionStub
+{
+    /** @var array<string, mixed> */
+    public array $flags = [];
+
+    public ResponseStub $response;
+
+    public function __construct(public RequestStub $request)
+    {
+        $this->response = new ResponseStub();
+    }
+
+    public function setFlag(string $action, string $flag, mixed $value): self
+    {
+        $this->flags[$flag] = $value;
+
+        return $this;
+    }
+
+    public function getResponse(): ResponseStub
+    {
+        return $this->response;
+    }
+
+    public function getRequest(): RequestStub
+    {
+        return $this->request;
+    }
+}
+
+class AdminSessionStub
+{
+    /** @var list<string> */
+    public array $errors = [];
+
+    public function addError(string $message): self
+    {
+        $this->errors[] = $message;
+
+        return $this;
+    }
+}
+
+class UrlModelStub
+{
+    /** @param array<string, mixed> $params */
+    public function getUrl(string $route, array $params = []): string
+    {
+        return 'https://admin.test/' . $route . ($params !== [] ? '?' . http_build_query($params) : '');
+    }
+}
+
 class WebsiteStub
 {
     /** @param array<string, mixed> $config */

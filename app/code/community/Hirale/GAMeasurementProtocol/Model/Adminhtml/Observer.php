@@ -9,6 +9,11 @@ declare(strict_types=1);
  * before anything persists. Offline by design — the live validate-only probe
  * is the Validate Destination button's job, so saving the section never
  * blocks on Google availability.
+ *
+ * On failure the save is aborted the polite way: error message in the admin
+ * session, FLAG_NO_DISPATCH on the controller, redirect back to the section.
+ * Throwing from a predispatch observer would bubble past the action's error
+ * handling straight to Mage::run()'s generic exception page.
  */
 class Hirale_GAMeasurementProtocol_Model_Adminhtml_Observer
 {
@@ -39,16 +44,35 @@ class Hirale_GAMeasurementProtocol_Model_Adminhtml_Observer
 
         try {
             $tester->validateStructure($cfg);
+
+            return;
         } catch (Throwable $e) {
-            throw new Mage_Core_Exception('Data Manager configuration invalid: ' . $e->getMessage());
+            $message = 'Data Manager configuration invalid: ' . $e->getMessage();
         }
+
+        $controller = $observer->getEvent()->getControllerAction();
+        if (!is_object($controller)) {
+            // Defensive: no controller on the event — abort hard rather than
+            // letting a broken config persist.
+            throw new Mage_Core_Exception($message);
+        }
+
+        Mage::getSingleton('adminhtml/session')->addError($message);
+        $controller->setFlag('', Mage_Core_Controller_Varien_Action::FLAG_NO_DISPATCH, true);
+        $controller->getResponse()->setRedirect($this->_configEditUrl($request));
     }
 
-    public function setTester(Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester $tester): self
+    private function _configEditUrl(object $request): string
     {
-        $this->_tester = $tester;
+        $params = ['section' => 'google'];
+        foreach (['website', 'store'] as $scope) {
+            $value = $this->_scopeParam($request, $scope);
+            if ($value !== null) {
+                $params[$scope] = $value;
+            }
+        }
 
-        return $this;
+        return (string) Mage::getSingleton('adminhtml/url')->getUrl('adminhtml/system_config/edit', $params);
     }
 
     private function _getTester(): Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester
