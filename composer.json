@@ -13,6 +13,7 @@
     ],
     "require": {
         "php": ">=8.3",
+        "ext-mbstring": "*",
         "hirale/queue": "^3.0 || dev-master",
         "jaybizzle/crawler-detect": "^1.2",
         "googleads/data-manager": "^0.4"
