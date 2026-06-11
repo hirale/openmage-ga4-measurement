@@ -52,6 +52,7 @@ class DestinationTesterTest extends TestCase
     {
         \Mage::reset();
         \Mage::$helpers['core'] = new CoreHelperStub();
+        \Mage::$helpers['gameasurementprotocol'] = new \Hirale_GAMeasurementProtocol_Helper_Data();
         \Mage::$app = new AppStub();
         \Mage::$config = ['__null__' => [], '0' => [], 'storefront_de' => []];
     }
@@ -213,6 +214,41 @@ class DestinationTesterTest extends TestCase
         self::assertSame('hirale.validation', $request->getEvents()[0]->getClientId());
         self::assertSame('G-FORM', $request->getDestinations()[0]->getProductDestinationId());
         self::assertSame('events@demo.iam.gserviceaccount.com', $tester->ingests[0]['key']['client_email']);
+    }
+
+    public function testWhitespacePaddedPlaceholderStillFallsBackToStored(): void
+    {
+        \Mage::$config['storefront_de']['google/measurement/dm_service_account_key'] = 'enc:' . base64_encode($this->validKeyJson());
+
+        $tester = new RecordingDestinationTester();
+        $cfg = $tester->buildConfigFromForm(
+            $this->formGroups(['dm_service_account_key' => ['value' => ' ****** ']]),
+            null,
+            'storefront_de',
+        );
+
+        self::assertSame($this->validKeyJson(), $cfg['service_account_key']);
+    }
+
+    public function testStoredGarbageResolvesToEmptyAndFailsWithRequiredMessage(): void
+    {
+        // A stored literal 'null' (failed paste seeded via SQL) must resolve
+        // to "no key" — not be mistaken for usable plaintext or ciphertext.
+        \Mage::$config['storefront_de']['google/measurement/dm_service_account_key'] = 'null';
+
+        $tester = new RecordingDestinationTester();
+        $cfg = $tester->buildConfigFromForm(
+            $this->formGroups(['dm_service_account_key' => ['value' => '******']]),
+            null,
+            'storefront_de',
+        );
+
+        self::assertSame('', $cfg['service_account_key']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Service Account Key is required/');
+
+        $tester->validateStructure($cfg);
     }
 
     public function testProbePropagatesIngestFailures(): void

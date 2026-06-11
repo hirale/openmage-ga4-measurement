@@ -123,10 +123,7 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
     }
 
     /**
-     * Decoded service-account key file for the Data Manager transport. The
-     * config value is encrypted at rest by the backend model; a plain-JSON
-     * value (e.g. seeded directly into core_config_data on a dev box) is
-     * accepted as a fallback.
+     * Decoded service-account key file for the Data Manager transport.
      *
      * @return array<string, mixed>|null
      */
@@ -137,15 +134,45 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
             $this->_serviceAccountKey[$cacheKey] = null;
             $raw = Mage::getStoreConfig('google/measurement/dm_service_account_key', $storeId);
             if (is_string($raw) && $raw !== '') {
-                $decoded = json_decode((string) Mage::helper('core')->decrypt($raw), true);
-                if (!is_array($decoded)) {
-                    $decoded = json_decode($raw, true);
-                }
+                $json = $this->resolveServiceAccountKeyJson($raw);
+                $decoded = $json !== null ? json_decode($json, true) : null;
                 $this->_serviceAccountKey[$cacheKey] = is_array($decoded) ? $decoded : null;
             }
         }
 
         return $this->_serviceAccountKey[$cacheKey];
+    }
+
+    /**
+     * Resolve a stored dm_service_account_key config value to the key-file
+     * JSON string. The backend model encrypts on every admin save, so the
+     * normal path is decryption; a value seeded unencrypted (direct DB
+     * write) still works but logs a warning, because silently honoring it
+     * forever would hide that the credential is not encrypted at rest.
+     */
+    public function resolveServiceAccountKeyJson(string $stored): ?string
+    {
+        if ($stored === '') {
+            return null;
+        }
+
+        $decrypted = (string) Mage::helper('core')->decrypt($stored);
+        if (is_array(json_decode($decrypted, true))) {
+            return $decrypted;
+        }
+
+        if (is_array(json_decode($stored, true))) {
+            Mage::log(
+                'google/measurement/dm_service_account_key is stored unencrypted; re-save the section in admin to encrypt it at rest.',
+                null,
+                '',
+                true,
+            );
+
+            return $stored;
+        }
+
+        return null;
     }
 
     public function getApiSecret(?int $storeId = null): ?string

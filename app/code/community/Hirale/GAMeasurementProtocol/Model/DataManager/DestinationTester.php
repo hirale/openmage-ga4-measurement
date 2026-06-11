@@ -149,12 +149,15 @@ class Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester
      */
     private function formSecret(mixed $value, string $path, ?string $websiteCode, ?string $storeCode): string
     {
-        if (is_string($value) && $value !== '' && preg_match('/^\*+$/', $value) !== 1) {
-            return $value;
-        }
-        if (is_string($value) && $value === '') {
-            // Explicitly cleared on screen.
-            return '';
+        if (is_string($value)) {
+            $value = trim($value);
+            if ($value === '') {
+                // Explicitly cleared on screen.
+                return '';
+            }
+            if (preg_match('/^\*+$/', $value) !== 1) {
+                return $value;
+            }
         }
 
         $stored = $this->savedValue($path, $websiteCode, $storeCode);
@@ -162,13 +165,17 @@ class Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester
             return '';
         }
 
-        $decrypted = (string) Mage::helper('core')->decrypt($stored);
-        if (json_decode($decrypted, true) === null && json_decode($stored, true) !== null) {
-            // Value was seeded unencrypted (dev fixture) — use it as-is.
-            return $stored;
+        return (string) $this->helper()->resolveServiceAccountKeyJson($stored);
+    }
+
+    private function helper(): Hirale_GAMeasurementProtocol_Helper_Data
+    {
+        $helper = Mage::helper('gameasurementprotocol');
+        if (!$helper instanceof Hirale_GAMeasurementProtocol_Helper_Data) {
+            throw new RuntimeException('Hirale GAMeasurementProtocol helper is unavailable.');
         }
 
-        return $decrypted;
+        return $helper;
     }
 
     private function savedValue(string $path, ?string $websiteCode, ?string $storeCode): string

@@ -226,13 +226,6 @@ class Hirale_GAMeasurementProtocol_Model_Api
         return $this;
     }
 
-    public function setClientFactory(Hirale_GAMeasurementProtocol_Model_DataManager_ClientFactory $clientFactory): self
-    {
-        $this->_clientFactory = $clientFactory;
-
-        return $this;
-    }
-
     private function _getHelper(): Hirale_GAMeasurementProtocol_Helper_Data
     {
         if ($this->_helper === null) {

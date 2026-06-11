@@ -12,7 +12,7 @@ class Hirale_GAMeasurementProtocol_Adminhtml_GameasurementController extends Mag
     public function validateDestinationAction(): void
     {
         if (!$this->_validateFormKey()) {
-            $this->_jsonResponse([
+            Hirale_Queue_Model_Compat::jsonResponse($this->getResponse(), [
                 'success' => false,
                 'message' => 'Invalid form key. Reload the page and try again.',
             ]);
@@ -30,7 +30,7 @@ class Hirale_GAMeasurementProtocol_Adminhtml_GameasurementController extends Mag
             );
 
             if ($cfg['transport'] !== Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER) {
-                $this->_jsonResponse([
+                Hirale_Queue_Model_Compat::jsonResponse($this->getResponse(), [
                     'success' => false,
                     'message' => 'Select the Data Manager API transport first — there is nothing to validate for the Measurement Protocol.',
                 ]);
@@ -39,13 +39,13 @@ class Hirale_GAMeasurementProtocol_Adminhtml_GameasurementController extends Mag
             }
 
             $requestId = $tester->probe($cfg);
-            $this->_jsonResponse([
+            Hirale_Queue_Model_Compat::jsonResponse($this->getResponse(), [
                 'success' => true,
                 'message' => sprintf('Validation passed — Google accepted a validate-only test event (requestId %s). Nothing was recorded in GA4.', $requestId),
             ]);
         } catch (Throwable $e) {
             Mage::logException($e);
-            $this->_jsonResponse([
+            Hirale_Queue_Model_Compat::jsonResponse($this->getResponse(), [
                 'success' => false,
                 'message' => $e->getMessage(),
             ]);
@@ -63,23 +63,5 @@ class Hirale_GAMeasurementProtocol_Adminhtml_GameasurementController extends Mag
         $value = $this->getRequest()->getParam($name);
 
         return is_string($value) && $value !== '' ? $value : null;
-    }
-
-    /**
-     * @param array{success: bool, message: string} $payload
-     */
-    private function _jsonResponse(array $payload): void
-    {
-        $response = $this->getResponse();
-        // Maho responses expose setBodyJson; OpenMage builds the header by
-        // hand (same seam as Hirale_Queue_Model_Compat::jsonResponse).
-        if (method_exists($response, 'setBodyJson')) {
-            $response->setBodyJson($payload);
-
-            return;
-        }
-
-        $response->setHeader('Content-Type', 'application/json', true);
-        $response->setBody((string) json_encode($payload));
     }
 }

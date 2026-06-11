@@ -224,10 +224,11 @@ class HelperDataTest extends TestCase
         self::assertSame('service_account', $key['type']);
     }
 
-    public function testGetServiceAccountKeyAcceptsPlainJsonStoredValue(): void
+    public function testGetServiceAccountKeyAcceptsPlainJsonStoredValueWithWarning(): void
     {
         // Decrypting a never-encrypted value yields garbage; the helper then
-        // falls back to decoding the raw stored string.
+        // falls back to decoding the raw stored string — and warns, because
+        // the credential is not encrypted at rest.
         $json = (string) json_encode(['type' => 'service_account', 'client_email' => 'plain@x.iam.gserviceaccount.com']);
         \Mage::$config['1']['google/measurement/dm_service_account_key'] = $json;
 
@@ -236,6 +237,18 @@ class HelperDataTest extends TestCase
 
         self::assertIsArray($key);
         self::assertSame('plain@x.iam.gserviceaccount.com', $key['client_email']);
+        self::assertNotEmpty(\Mage::$logs);
+        self::assertStringContainsString('unencrypted', (string) \Mage::$logs[0]['message']);
+    }
+
+    public function testGetServiceAccountKeyReturnsNullForStoredNullLiteral(): void
+    {
+        \Mage::$config['1']['google/measurement/dm_service_account_key'] = 'null';
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertNull($helper->getServiceAccountKey(1));
+        self::assertSame([], \Mage::$logs, 'a non-key value must not trigger the plaintext-fallback warning');
     }
 
     public function testGetServiceAccountKeyReturnsNullWhenMissingOrGarbage(): void
