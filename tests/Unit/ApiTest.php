@@ -99,6 +99,43 @@ class ApiTest extends TestCase
         ));
     }
 
+    public function testInvokeSanitizesNonUtf8PayloadInsteadOfPostingEmptyBody(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: [
+                'client_id' => '111.222',
+                'events' => [['name' => 'search', 'params' => ['search_term' => "caf\xE9"]]],
+            ],
+            storeId: 1,
+        ));
+
+        self::assertCount(1, $api->posts);
+        self::assertNotSame('', $api->posts[0]['body'], 'json_encode failure must not post an empty body');
+        $decoded = json_decode($api->posts[0]['body'], true);
+        self::assertIsArray($decoded);
+        self::assertStringStartsWith('caf', $decoded['events'][0]['params']['search_term']);
+    }
+
+    public function testInvokeFailsUnrecoverablyWhenPayloadIsNotEncodable(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+
+        $this->expectException(\Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessageMatches('/not JSON-encodable/');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'x', 'params' => ['value' => INF]]]],
+            storeId: 1,
+        ));
+    }
+
     public function testInvokeLogsWhenDebugModeIsSet(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';

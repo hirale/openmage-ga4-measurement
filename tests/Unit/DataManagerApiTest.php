@@ -196,6 +196,21 @@ class DataManagerApiTest extends TestCase
         $api($this->message());
     }
 
+    public function testGaxValidationFailureFailsUnrecoverably(): void
+    {
+        $this->configureDataManagerStore();
+
+        $api = new RecordingDataManagerApi();
+        // gax throws this (a plain Exception subclass) for deterministic
+        // config mismatches, e.g. a key with a foreign universe_domain.
+        $api->nextIngestException = new \Google\ApiCore\ValidationException('The configured universe domain (googleapis.com) does not match the credential universe domain (custom.example.goog)');
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessageMatches('/credentials invalid/');
+
+        $api($this->message());
+    }
+
     public function testOauthTokenRejectionFailsUnrecoverably(): void
     {
         $this->configureDataManagerStore();

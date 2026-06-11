@@ -273,6 +273,7 @@ if (!class_exists('Varien_Event')) {
 }
 
 require_once __DIR__ . '/Support/QueueBusStub.php';
+require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Utf8.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Helper/Data.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Message/MeasurementEventMessage.php';
 require_once __DIR__ . '/../app/code/community/Hirale/GAMeasurementProtocol/Model/Api.php';

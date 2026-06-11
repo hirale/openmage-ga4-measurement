@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Google\Ads\DataManager\V1\IngestEventsRequest;
 use Google\Ads\DataManager\V1\IngestEventsResponse;
 use Google\ApiCore\ApiException;
+use Google\ApiCore\ValidationException;
 use Google\Rpc\Code;
 use GuzzleHttp\Exception\ClientException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
@@ -64,7 +65,18 @@ class Hirale_GAMeasurementProtocol_Model_Api
             return;
         }
 
-        $body = (string) json_encode($payload, JSON_UNESCAPED_SLASHES);
+        // Same boundary rule as the Data Manager path: ill-formed bytes in
+        // storefront data must not abort serialization. Without this,
+        // json_encode returns false and an empty body would be posted —
+        // the event silently lost.
+        $payload = Hirale_GAMeasurementProtocol_Model_Utf8::deep($payload);
+        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        if (!is_string($body)) {
+            // Post-sanitization this means a non-encodable scalar (INF/NAN)
+            // — a deterministic payload defect, not worth retries.
+            throw new UnrecoverableMessageHandlingException('Measurement Protocol payload not JSON-encodable: ' . json_last_error_msg());
+        }
+
         $result = $this->_postToGa4(
             $url . '?measurement_id=' . rawurlencode($measurementId) . '&api_secret=' . rawurlencode($apiSecret),
             $body,
@@ -127,10 +139,12 @@ class Hirale_GAMeasurementProtocol_Model_Api
             $response = $this->_ingestEvents($request, $serviceAccountKey);
         } catch (ApiException $e) {
             $this->_handleApiException($e);
-        } catch (LogicException | UnexpectedValueException $e) {
+        } catch (LogicException | UnexpectedValueException | ValidationException $e) {
             // google/auth rejects a malformed key at client construction
             // (InvalidArgumentException) or while signing (DomainException,
-            // UnexpectedValueException) — deterministic misconfiguration.
+            // UnexpectedValueException); gax throws its own ValidationException
+            // (a plain Exception subclass) for config mismatches like a
+            // foreign universe_domain — all deterministic misconfiguration.
             throw new UnrecoverableMessageHandlingException('Data Manager credentials invalid: ' . $e->getMessage(), 0, $e);
         } catch (ClientException $e) {
             // 4xx from the OAuth token endpoint (invalid_grant & co.) —
