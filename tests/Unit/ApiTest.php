@@ -211,4 +211,38 @@ class ApiTest extends TestCase
 
         self::assertCount(1, $api->posts);
     }
+
+    public function testMeasurementProtocolCurlTimeoutsAreBoundedWellBelowTheClaimWindow(): void
+    {
+        // A handler that outlives the queue's abandoned-claim window (300s on
+        // Maho without pcntl) is redelivered while still running, and the
+        // event goes out twice.
+        self::assertLessThan(300, \Hirale_GAMeasurementProtocol_Model_Api::MP_TIMEOUT_SECONDS);
+        self::assertLessThanOrEqual(
+            \Hirale_GAMeasurementProtocol_Model_Api::MP_TIMEOUT_SECONDS,
+            \Hirale_GAMeasurementProtocol_Model_Api::MP_CONNECT_TIMEOUT_SECONDS,
+        );
+    }
+
+    public function testInvokeTreatsATimeoutAsRetryableNotPermanent(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        // CURLE_OPERATION_TIMEDOUT: Google may or may not have taken the body,
+        // so the message has to go back through the queue's backoff.
+        $api->nextResponse = ['http_code' => 0, 'curl_errno' => 28, 'curl_error' => 'Operation timed out after 15000 ms'];
+
+        try {
+            $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+                events: ['events' => [['name' => 'purchase', 'params' => []]]],
+                storeId: 1,
+            ));
+            self::fail('Expected the timeout to surface as an exception.');
+        } catch (\RuntimeException $e) {
+            self::assertNotInstanceOf(UnrecoverableMessageHandlingException::class, $e);
+            self::assertStringContainsString('timed out', $e->getMessage());
+        }
+    }
 }

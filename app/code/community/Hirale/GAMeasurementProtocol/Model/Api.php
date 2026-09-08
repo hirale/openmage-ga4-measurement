@@ -27,6 +27,15 @@ class Hirale_GAMeasurementProtocol_Model_Api
     public const DM_STALENESS_LIMIT_SECONDS = 72 * 3600 - 600;
 
     /**
+     * Seconds allowed for the TCP+TLS handshake and for the whole request.
+     * Both must stay well under the queue's abandoned-claim window (300s on
+     * Maho without pcntl): a handler that outlives it is redelivered while it
+     * is still running, and the event would be posted twice.
+     */
+    public const MP_CONNECT_TIMEOUT_SECONDS = 5;
+    public const MP_TIMEOUT_SECONDS = 15;
+
+    /**
      * gRPC codes worth a queue retry: transient server or network
      * conditions. Everything else (bad request, auth, missing destination)
      * cannot succeed on replay and must fail the job immediately.
@@ -108,6 +117,9 @@ class Hirale_GAMeasurementProtocol_Model_Api
         }
 
         if ($result['curl_errno'] !== 0) {
+            // Transport failure — a timeout included. Retryable by design:
+            // Google may or may not have received the body, and a plain
+            // exception sends it back through the queue's backoff.
             throw new RuntimeException($result['curl_error']);
         }
 
@@ -236,6 +248,8 @@ class Hirale_GAMeasurementProtocol_Model_Api
             CURLOPT_POSTFIELDS => $body,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_CONNECTTIMEOUT => self::MP_CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_TIMEOUT => self::MP_TIMEOUT_SECONDS,
         ]);
         curl_exec($ch);
         $result = [
