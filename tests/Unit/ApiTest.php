@@ -245,4 +245,82 @@ class ApiTest extends TestCase
             self::assertStringContainsString('timed out', $e->getMessage());
         }
     }
+
+    /**
+     * The Data Manager client is optional, so a store that never installed it
+     * must still be able to load and run the handler for the Measurement
+     * Protocol transport.
+     *
+     * Runs in a child process on purpose: by the time this test executes, the
+     * dev-installed protos are already loaded in this one, so an in-process
+     * check would pass no matter what the class does.
+     */
+    public function testHandlerLoadsWithoutTheDataManagerPackage(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $probe = <<<'PHP'
+            <?php
+            // Prepended, so Composer never gets the chance to resolve a class
+            // an MP-only store would not have.
+            spl_autoload_register(static function (string $class): void {
+                if (str_starts_with($class, 'Google\\')) {
+                    echo 'RESOLVED ', $class;
+                    exit(1);
+                }
+            }, true, true);
+
+            require $argv[1] . '/tests/bootstrap.php';
+
+            $api = new Hirale_GAMeasurementProtocol_Model_Api();
+            $api->setHelper(new Hirale_GAMeasurementProtocol_Helper_Data());
+            Mage::$config = ['1' => []];
+            // No measurement id configured, so the MP branch returns before
+            // any network call — this is about reaching it at all.
+            $api(new Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+                events: ['events' => [['name' => 'login', 'params' => []]]],
+                storeId: 1,
+            ));
+            echo 'OK';
+            PHP;
+
+        $probeFile = tempnam(sys_get_temp_dir(), 'ga4probe') . '.php';
+        file_put_contents($probeFile, $probe);
+
+        try {
+            $output = (string) shell_exec(sprintf(
+                '%s %s %s 2>&1',
+                escapeshellarg(PHP_BINARY),
+                escapeshellarg($probeFile),
+                escapeshellarg($root),
+            ));
+        } finally {
+            @unlink($probeFile);
+        }
+
+        self::assertStringContainsString('OK', $output, $output);
+    }
+
+    public function testDataManagerTransportFailsLoudlyWhenThePackageIsMissing(): void
+    {
+        \Mage::$config['1']['google/measurement/transport'] = \Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER;
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/dm_property_id'] = '213025502';
+
+        $api = new class extends \Hirale_GAMeasurementProtocol_Model_Api {
+            #[\Override]
+            protected function _isDataManagerAvailable(): bool
+            {
+                return false;
+            }
+        };
+
+        // Never retryable: no amount of backoff installs a composer package.
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessage('composer require googleads/data-manager');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'purchase', 'params' => []]]],
+            storeId: 1,
+        ));
+    }
 }

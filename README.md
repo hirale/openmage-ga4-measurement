@@ -45,15 +45,16 @@ package any more — the module picks a backend at runtime, in this order:
 has `hirale/queue` installed.
 
 > **4.0.0 is a breaking change.** `hirale/queue` moved from `require` to
-> `suggest`. OpenMage installs that upgrade from 3.x must require it
-> explicitly, or events stop being queued. Nothing else changes: the same
-> messages, transports, config paths and `analytics` queue name as before.
+> `suggest` — OpenMage installs that upgrade from 3.x must require it
+> explicitly, or events stop being queued — and `googleads/data-manager` did
+> the same, so stores on the Data Manager transport must require it too. The
+> messages, transports, config paths and `analytics` queue name are unchanged.
 
 ## Install
 
-[`googleads/data-manager`](https://packagist.org/packages/googleads/data-manager)
-is pulled in automatically; its client uses the REST transport, so neither
-ext-grpc nor ext-protobuf is required.
+The default Measurement Protocol transport needs nothing beyond `ext-curl`.
+The Data Manager API transport needs one extra package — see
+[Setup — Data Manager API](#setup--data-manager-api).
 
 **Maho** (26.5+, with core `Maho_Queue`):
 
@@ -86,6 +87,18 @@ Configuration lives in `System > Configuration > Sales > Google API > GA4 Server
 2. Enter the Measurement ID and API Secret, save.
 
 ### Setup — Data Manager API
+
+This transport is optional, so its client is not installed by default:
+
+```bash
+composer require googleads/data-manager
+```
+
+It uses the REST transport, so neither ext-grpc nor ext-protobuf is required.
+Without the package the module keeps working on the Measurement Protocol;
+switching a store to Data Manager is refused at save time, and any message
+already queued for it fails with the same `composer require` hint instead of
+retrying forever.
 
 One-time Google-side setup (detailed in [Google's guide](https://developers.google.com/data-manager/api/devguides/quickstart/set-up-access)):
 
@@ -133,7 +146,9 @@ Enable debug mode in the system config (gated by `System > Developer > Developer
 
 **From 3.x** — Maho: nothing to do beyond `composer dump-autoload`; `hirale/queue`
 can be removed. OpenMage: add `hirale/queue` to your own `composer.json`, since
-this package no longer requires it.
+this package no longer requires it. **Both platforms:** if any store uses the
+Data Manager API transport, add `googleads/data-manager` explicitly — it is no
+longer a hard requirement of this package, so an upgrade drops it.
 
 **From 2.x** — no config action needed: the transport defaults to Measurement
 Protocol and the existing `measurement_id`/`api_secret` config keeps working

@@ -35,20 +35,6 @@ class Hirale_GAMeasurementProtocol_Model_Api
     public const MP_CONNECT_TIMEOUT_SECONDS = 5;
     public const MP_TIMEOUT_SECONDS = 15;
 
-    /**
-     * gRPC codes worth a queue retry: transient server or network
-     * conditions. Everything else (bad request, auth, missing destination)
-     * cannot succeed on replay and must fail the job immediately.
-     */
-    private const DM_RETRYABLE_CODES = [
-        Code::UNKNOWN,
-        Code::DEADLINE_EXCEEDED,
-        Code::RESOURCE_EXHAUSTED,
-        Code::ABORTED,
-        Code::INTERNAL,
-        Code::UNAVAILABLE,
-    ];
-
     private ?Hirale_GAMeasurementProtocol_Helper_Data $_helper = null;
 
     private ?Hirale_GAMeasurementProtocol_Model_DataManager_Translator $_translator = null;
@@ -144,6 +130,17 @@ class Hirale_GAMeasurementProtocol_Model_Api
      */
     protected function _sendViaDataManager(array $payload, int $storeId, bool $shouldLogDebugEvent): void
     {
+        if (!$this->_isDataManagerAvailable()) {
+            // Same verdict the admin save-time validation gives, reached from
+            // the other direction: a store that switched transports without
+            // installing the package. No amount of retrying installs it.
+            throw new UnrecoverableMessageHandlingException(sprintf(
+                'The Data Manager API transport requires the "%s" package. Run: composer require %s',
+                Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester::PACKAGE,
+                Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester::PACKAGE,
+            ));
+        }
+
         $helper = $this->_getHelper();
 
         $timestampMicros = $payload['timestamp_micros'] ?? null;
@@ -209,6 +206,17 @@ class Hirale_GAMeasurementProtocol_Model_Api
     }
 
     /**
+     * Whether the optional Data Manager client is installed. ::class is a
+     * compile-time string, so this asks the autoloader without ever forcing
+     * the class to resolve. Overridable so the suite can simulate a store
+     * that never installed it.
+     */
+    protected function _isDataManagerAvailable(): bool
+    {
+        return class_exists(IngestEventsRequest::class);
+    }
+
+    /**
      * Performs the ingest call. Factored out so unit tests can override
      * without hitting the network (mirrors _postToGa4).
      */
@@ -219,6 +227,30 @@ class Hirale_GAMeasurementProtocol_Model_Api
         return $this->_getClientFactory()->create($serviceAccountKey)->ingestEvents($request);
     }
 
+    /**
+     * gRPC codes worth a queue retry: transient server or network conditions.
+     * Everything else (bad request, auth, missing destination) cannot succeed
+     * on replay and must fail the job immediately.
+     *
+     * Built on demand rather than as a class constant: a constant expression
+     * naming Google\Rpc\Code is evaluated when the class is instantiated, so
+     * as a constant it made the whole handler — Measurement Protocol included
+     * — unloadable on a store without the optional Data Manager package.
+     *
+     * @return list<int>
+     */
+    protected function _retryableDataManagerCodes(): array
+    {
+        return [
+            Code::UNKNOWN,
+            Code::DEADLINE_EXCEEDED,
+            Code::RESOURCE_EXHAUSTED,
+            Code::ABORTED,
+            Code::INTERNAL,
+            Code::UNAVAILABLE,
+        ];
+    }
+
     protected function _handleApiException(ApiException $e): never
     {
         $message = sprintf(
@@ -227,7 +259,7 @@ class Hirale_GAMeasurementProtocol_Model_Api
             (string) ($e->getBasicMessage() ?: $e->getMessage()),
         );
 
-        if (in_array($e->getCode(), self::DM_RETRYABLE_CODES, true)) {
+        if (in_array($e->getCode(), $this->_retryableDataManagerCodes(), true)) {
             throw new RuntimeException($message, 0, $e);
         }
 
