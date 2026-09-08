@@ -2,7 +2,7 @@
 <config>
     <modules>
         <Hirale_GAMeasurementProtocol>
-            <version>3.0.0</version>
+            <version>4.0.0</version>
         </Hirale_GAMeasurementProtocol>
     </modules>
     <default>
@@ -47,6 +47,18 @@
                 </observers>
             </sales_order_payment_refund>
         </events>
+        <!--
+            Maho core queue: GA4 upload is one outbound HTTP call per message, so
+            the analytics queue is routed to the catch-all "slow" pool and never
+            competes with the resident "fast" pool (order mail and friends).
+            A host can retarget it from its own config.xml or local.xml.
+            Ignored by hirale/queue on OpenMage, which reads <hirale_queue> below.
+        -->
+        <queue>
+            <routing>
+                <analytics>slow</analytics>
+            </routing>
+        </queue>
         <hirale_queue>
             <handlers>
                 <Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>gameasurementprotocol/api</Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>

@@ -34,7 +34,7 @@ class UrlHelperStub
     }
 }
 
-class CoreHelperStub
+class CoreHelperStub extends \Mage_Core_Helper_Abstract
 {
     public bool $devAllowed = false;
 

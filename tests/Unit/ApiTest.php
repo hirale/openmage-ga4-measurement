@@ -8,6 +8,7 @@ use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\RecordingApi;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 class ApiTest extends TestCase
 {
@@ -157,5 +158,57 @@ class ApiTest extends TestCase
         self::assertNotEmpty(\Mage::$logs);
         self::assertSame('ga_store_1.log', \Mage::$logs[0]['file']);
         self::assertStringContainsString('HTTP 204', (string) \Mage::$logs[0]['message']);
+    }
+
+    public function testInvokeFailsUnrecoverablyOnMeasurementProtocol4xx(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'wrong-secret';
+
+        $api = new RecordingApi();
+        $api->nextResponse = ['http_code' => 401, 'curl_errno' => 0, 'curl_error' => ''];
+
+        // Both platforms honour this exception by failing the job instead of
+        // retrying: a rejected request replays into the same rejection.
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessage('HTTP 401');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
+    }
+
+    public function testInvokeRetriesOnMeasurementProtocol5xx(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        $api->nextResponse = ['http_code' => 503, 'curl_errno' => 0, 'curl_error' => ''];
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('HTTP 503');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
+    }
+
+    public function testInvokeAcceptsMeasurementProtocolSuccessCodes(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        $api->nextResponse = ['http_code' => 204, 'curl_errno' => 0, 'curl_error' => ''];
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
+
+        self::assertCount(1, $api->posts);
     }
 }

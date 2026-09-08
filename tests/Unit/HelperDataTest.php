@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace HiraleGAMeasurementProtocol\Tests\Unit;
 
+use Hirale\Queue\Bus;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
+use Maho\Queue\QueueManager;
 use PHPUnit\Framework\TestCase;
 
 class HelperDataTest extends TestCase
@@ -13,6 +15,8 @@ class HelperDataTest extends TestCase
     protected function setUp(): void
     {
         \Mage::reset();
+        Bus::reset();
+        QueueManager::reset();
         \Mage::$helpers['core'] = new CoreHelperStub();
         \Mage::$singletons['core/session'] = new CoreSessionStub();
         \Mage::$config = [
@@ -25,6 +29,8 @@ class HelperDataTest extends TestCase
     protected function tearDown(): void
     {
         \Mage::reset();
+        Bus::reset();
+        QueueManager::reset();
         unset($_COOKIE['_ga'], $_COOKIE['_ga_GZTEST']);
     }
 
@@ -261,5 +267,73 @@ class HelperDataTest extends TestCase
         self::assertNull($helper->getServiceAccountKey(2));
         // Cached negative result stays null.
         self::assertNull($helper->getServiceAccountKey(2));
+    }
+
+    public function testBridgePrefersMahoCoreQueueWhenTheModuleIsEnabled(): void
+    {
+        \Mage::$enabledModules['Maho_Queue'] = true;
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertTrue($helper->isQueueEnabled());
+        self::assertTrue($helper->enqueueMeasurementEvent(['events' => [['name' => 'login']]], 7, false));
+        self::assertCount(1, QueueManager::$dispatches);
+        self::assertSame([], Bus::$dispatches);
+
+        $call = QueueManager::$dispatches[0];
+        self::assertSame(\Hirale_GAMeasurementProtocol_Helper_Data::QUEUE_ANALYTICS, $call['queue']);
+        self::assertNull($call['delaySeconds']);
+
+        $message = $call['message'];
+        self::assertInstanceOf(\Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage::class, $message);
+        self::assertSame(['events' => [['name' => 'login']]], $message->events);
+        self::assertSame(7, $message->storeId);
+        self::assertFalse($message->debugMode);
+    }
+
+    public function testBridgeFallsBackToHiraleQueueWhenMahoQueueIsDisabled(): void
+    {
+        // The stubbed QueueManager class exists either way, so the module flag
+        // is what actually decides the branch.
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertTrue($helper->isQueueEnabled());
+        self::assertTrue($helper->enqueueMeasurementEvent(['events' => [['name' => 'login']]], 7, true));
+        self::assertCount(1, Bus::$dispatches);
+        self::assertSame([], QueueManager::$dispatches);
+
+        // hirale/queue routes by message class from its own config.xml.
+        self::assertSame('dispatch', Bus::$dispatches[0]['method']);
+        self::assertTrue(Bus::$dispatches[0]['message']->debugMode);
+    }
+
+    public function testBridgeReportsQueueUnavailableWithoutAnyBackend(): void
+    {
+        $helper = new class extends \Hirale_GAMeasurementProtocol_Helper_Data {
+            #[\Override]
+            protected function _isHiraleQueueAvailable(): bool
+            {
+                return false;
+            }
+        };
+
+        self::assertFalse($helper->isQueueEnabled());
+        self::assertFalse($helper->enqueueMeasurementEvent(['events' => []], 1, false));
+        self::assertSame([], Bus::$dispatches);
+        self::assertSame([], QueueManager::$dispatches);
+        // Silently declining is the point: no exception reaches the observer.
+        self::assertSame([], \Mage::$exceptions);
+    }
+
+    public function testDispatchFailureIsSwallowedAndLogged(): void
+    {
+        \Mage::$enabledModules['Maho_Queue'] = true;
+        QueueManager::$nextException = new \RuntimeException('queue table is gone');
+
+        $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
+
+        self::assertFalse($helper->enqueueMeasurementEvent(['events' => []], 1, false));
+        self::assertCount(1, \Mage::$exceptions);
+        self::assertSame('queue table is gone', \Mage::$exceptions[0]->getMessage());
     }
 }

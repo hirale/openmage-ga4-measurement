@@ -10,6 +10,13 @@ use Google\Rpc\Code;
 use GuzzleHttp\Exception\ClientException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
+/**
+ * Handler for queued GA4 uploads.
+ *
+ * Registered twice on purpose: the #[\Maho\Config\MessageHandler] attribute
+ * for Maho's core queue, and <hirale_queue><handlers> in config.xml for
+ * hirale/queue on OpenMage. Each backend ignores the other's registration.
+ */
 class Hirale_GAMeasurementProtocol_Model_Api
 {
     /**
@@ -39,6 +46,7 @@ class Hirale_GAMeasurementProtocol_Model_Api
 
     private ?Hirale_GAMeasurementProtocol_Model_DataManager_ClientFactory $_clientFactory = null;
 
+    #[\Maho\Config\MessageHandler]
     public function __invoke(Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage $message): void
     {
         try {
@@ -101,6 +109,21 @@ class Hirale_GAMeasurementProtocol_Model_Api
 
         if ($result['curl_errno'] !== 0) {
             throw new RuntimeException($result['curl_error']);
+        }
+
+        // Measurement Protocol answers 2xx even for payloads it silently
+        // drops, so a 4xx is a request-level defect — wrong measurement id or
+        // api secret, malformed body — that a replay reproduces exactly.
+        if ($result['http_code'] >= 400 && $result['http_code'] < 500) {
+            throw new UnrecoverableMessageHandlingException(
+                sprintf('Measurement Protocol rejected the request: HTTP %d', $result['http_code']),
+            );
+        }
+
+        if ($result['http_code'] >= 500) {
+            throw new RuntimeException(
+                sprintf('Measurement Protocol request failed: HTTP %d', $result['http_code']),
+            );
         }
     }
 

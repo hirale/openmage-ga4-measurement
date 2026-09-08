@@ -4,9 +4,11 @@
         <Hirale_GAMeasurementProtocol>
             <active>true</active>
             <codePool>community</codePool>
-            <depends>
-                <Hirale_Queue />
-            </depends>
+            <!--
+                Hirale_Queue is deliberately not a dependency: on Maho the module
+                dispatches through core Maho_Queue and hirale/queue is not installed,
+                and an unmet <depends> aborts config loading for the whole store.
+            -->
         </Hirale_GAMeasurementProtocol>
     </modules>
 </config>

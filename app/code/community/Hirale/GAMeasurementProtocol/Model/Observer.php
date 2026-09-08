@@ -1,6 +1,5 @@
 <?php
 
-use Hirale\Queue\Bus;
 use Jaybizzle\CrawlerDetect\CrawlerDetect;
 
 class Hirale_GAMeasurementProtocol_Model_Observer
@@ -54,6 +53,9 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * and debug flag travel as message fields (not inside the payload), so
      * the handler posts the events body to GA4 exactly as built here.
      *
+     * The helper picks the queue backend; with none installed it declines
+     * quietly and the storefront request is unaffected.
+     *
      * @param array $events
      */
     protected function addToQueue($events, ?int $storeId = null)
@@ -77,11 +79,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             }
             unset($event, $params);
 
-            Bus::dispatch(new Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
-                events: $events,
-                storeId: (int) $storeId,
-                debugMode: $shouldDebug,
-            ));
+            $this->helper->enqueueMeasurementEvent($events, (int) $storeId, $shouldDebug);
         } catch (Exception $e) {
             Mage::logException($e);
         }
