@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HiraleGAMeasurementProtocol\Tests\Unit;
 
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
+use HiraleGAMeasurementProtocol\Tests\Support\EncryptedConfigValue;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\RecordingApi;
 use PHPUnit\Framework\TestCase;
@@ -30,7 +31,7 @@ class ApiTest extends TestCase
     public function testInvokePostsEventsEnvelopeVerbatim(): void
     {
         \Mage::$config['7']['google/measurement/measurement_id'] = 'G-STORE7';
-        \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
+        \Mage::$config['7']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-7');
 
         $api = new RecordingApi();
         $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
@@ -54,7 +55,7 @@ class ApiTest extends TestCase
 
     public function testInvokeSkipsPostWhenStoreIsMissingMeasurementId(): void
     {
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
         // No measurement_id configured for store 1.
 
         $api = new RecordingApi();
@@ -69,9 +70,9 @@ class ApiTest extends TestCase
     public function testInvokeScopesHelperToMessageStoreId(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
         \Mage::$config['7']['google/measurement/measurement_id'] = 'G-STORE7';
-        \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
+        \Mage::$config['7']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-7');
 
         $api = new RecordingApi();
         $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
@@ -86,7 +87,7 @@ class ApiTest extends TestCase
     public function testInvokeThrowsOnCurlError(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
 
         $api = new RecordingApi();
         $api->nextResponse = ['http_code' => 0, 'curl_errno' => 28, 'curl_error' => 'Connection timed out'];
@@ -103,7 +104,7 @@ class ApiTest extends TestCase
     public function testInvokeSanitizesNonUtf8PayloadInsteadOfPostingEmptyBody(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
 
         $api = new RecordingApi();
         $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
@@ -124,7 +125,7 @@ class ApiTest extends TestCase
     public function testInvokeFailsUnrecoverablyWhenPayloadIsNotEncodable(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
 
         $api = new RecordingApi();
 
@@ -140,7 +141,7 @@ class ApiTest extends TestCase
     public function testInvokeLogsWhenDebugModeIsSet(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
         \Mage::$config['1']['google/measurement/log_file'] = 'ga_store_1.log';
 
         $api = new RecordingApi();
@@ -163,7 +164,7 @@ class ApiTest extends TestCase
     public function testInvokeFailsUnrecoverablyOnMeasurementProtocol4xx(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'wrong-secret';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('wrong-secret');
 
         $api = new RecordingApi();
         $api->nextResponse = ['http_code' => 401, 'curl_errno' => 0, 'curl_error' => ''];
@@ -182,7 +183,7 @@ class ApiTest extends TestCase
     public function testInvokeRetriesOnMeasurementProtocol5xx(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
 
         $api = new RecordingApi();
         $api->nextResponse = ['http_code' => 503, 'curl_errno' => 0, 'curl_error' => ''];
@@ -199,7 +200,7 @@ class ApiTest extends TestCase
     public function testInvokeAcceptsMeasurementProtocolSuccessCodes(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
 
         $api = new RecordingApi();
         $api->nextResponse = ['http_code' => 204, 'curl_errno' => 0, 'curl_error' => ''];
@@ -227,7 +228,7 @@ class ApiTest extends TestCase
     public function testInvokeTreatsATimeoutAsRetryableNotPermanent(): void
     {
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
 
         $api = new RecordingApi();
         // CURLE_OPERATION_TIMEDOUT: Google may or may not have taken the body,
@@ -322,5 +323,32 @@ class ApiTest extends TestCase
             events: ['events' => [['name' => 'purchase', 'params' => []]]],
             storeId: 1,
         ));
+    }
+
+    public function testDebugLogNeverCarriesTheApiSecret(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('top-secret-value');
+        \Mage::$config['1']['google/measurement/debug_mode'] = '1';
+        \Mage::$helpers['core']->devAllowed = true;
+        \Mage::$config['__null__'][\Mage_Core_Helper_Data::XML_PATH_DEV_ALLOW_IPS] = '127.0.0.1';
+
+        $api = new RecordingApi();
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'purchase', 'params' => ['transaction_id' => '100000001']]]],
+            storeId: 1,
+            debugMode: true,
+        ));
+
+        self::assertNotSame([], \Mage::$logs, 'debug mode must have logged something to check');
+        foreach (\Mage::$logs as $entry) {
+            self::assertStringNotContainsString('top-secret-value', (string) $entry['message']);
+        }
+
+        // Positive control: the body really is in there, so the assertion
+        // above is not passing because nothing was logged.
+        self::assertStringContainsString('transaction_id', (string) \Mage::$logs[0]['message']);
+        // The secret travels in the URL, which is exactly what is never logged.
+        self::assertStringContainsString('api_secret=top-secret-value', $api->posts[0]['url']);
     }
 }

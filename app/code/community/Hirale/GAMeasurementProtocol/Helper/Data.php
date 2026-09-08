@@ -190,11 +190,63 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
     {
         $cacheKey = $this->_cacheKey($storeId);
         if (!array_key_exists($cacheKey, $this->_apiSecret)) {
-            $value = Mage::getStoreConfig('google/measurement/api_secret', $storeId);
-            $this->_apiSecret[$cacheKey] = is_string($value) && $value !== '' ? $value : null;
+            $stored = Mage::getStoreConfig('google/measurement/api_secret', $storeId);
+            $this->_apiSecret[$cacheKey] = is_string($stored) && $stored !== ''
+                ? $this->resolveApiSecret($stored)
+                : null;
         }
 
         return $this->_apiSecret[$cacheKey];
+    }
+
+    /**
+     * Resolve a stored api_secret config value to the secret to send.
+     *
+     * The admin backend encrypts on every save, so the normal path is
+     * decryption. A value seeded unencrypted — a direct DB write, or an
+     * install whose 4.1.0 upgrade never ran — still works but logs a forced
+     * warning, because silently honoring it forever would hide that the
+     * credential is not encrypted at rest.
+     *
+     * Mirrors resolveServiceAccountKeyJson(); the two differ only in how they
+     * recognise their payload.
+     */
+    public function resolveApiSecret(string $stored): ?string
+    {
+        if ($stored === '') {
+            return null;
+        }
+
+        $decrypted = (string) Mage::helper('core')->decrypt($stored);
+        if (self::isPlausibleApiSecret($decrypted)) {
+            return $decrypted;
+        }
+
+        if (self::isPlausibleApiSecret($stored)) {
+            Mage::log(
+                'google/measurement/api_secret is stored unencrypted; re-save the section in admin to encrypt it at rest.',
+                null,
+                '',
+                true,
+            );
+
+            return $stored;
+        }
+
+        return null;
+    }
+
+    /**
+     * Google documents no shape for the Measurement Protocol secret, so this
+     * only rejects what one cannot be: empty, or carrying anything outside
+     * printable ASCII — which is what a failed decryption looks like.
+     *
+     * Shared with sql/gameasurementprotocol_setup/upgrade-4.0.0-4.1.0.php so
+     * the migration and the runtime agree on what "already encrypted" means.
+     */
+    public static function isPlausibleApiSecret(string $value): bool
+    {
+        return preg_match('/^[\x21-\x7e]+$/', $value) === 1;
     }
 
     /**

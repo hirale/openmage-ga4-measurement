@@ -84,7 +84,10 @@ Configuration lives in `System > Configuration > Sales > Google API > GA4 Server
 ### Setup — Measurement Protocol (default)
 
 1. Generate an API SECRET in the Google Analytics UI: `Admin > Data Streams > choose your stream > Measurement Protocol > Create`.
-2. Enter the Measurement ID and API Secret, save.
+2. Enter the Measurement ID and API Secret, save. The secret is stored
+   encrypted and shown obscured afterwards; installs upgrading from 4.0.0 or
+   earlier have their existing secret encrypted in place by the upgrade
+   script, across every scope.
 
 ### Setup — Data Manager API
 

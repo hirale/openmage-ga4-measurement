@@ -7,6 +7,7 @@ namespace HiraleGAMeasurementProtocol\Tests\Unit;
 use Google\ApiCore\ApiException;
 use Google\Rpc\Code;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
+use HiraleGAMeasurementProtocol\Tests\Support\EncryptedConfigValue;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\RecordingDataManagerApi;
 use PHPUnit\Framework\TestCase;
@@ -82,7 +83,7 @@ class DataManagerApiTest extends TestCase
     public function testMeasurementProtocolRemainsDefaultTransport(): void
     {
         \Mage::$config['7']['google/measurement/measurement_id'] = 'G-STORE7';
-        \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
+        \Mage::$config['7']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-7');
 
         $api = new RecordingDataManagerApi();
         $api($this->message());
