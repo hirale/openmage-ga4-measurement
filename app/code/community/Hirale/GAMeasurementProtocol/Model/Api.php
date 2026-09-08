@@ -10,6 +10,13 @@ use Google\Rpc\Code;
 use GuzzleHttp\Exception\ClientException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
+/**
+ * Handler for queued GA4 uploads.
+ *
+ * Registered twice on purpose: the #[\Maho\Config\MessageHandler] attribute
+ * for Maho's core queue, and <hirale_queue><handlers> in config.xml for
+ * hirale/queue on OpenMage. Each backend ignores the other's registration.
+ */
 class Hirale_GAMeasurementProtocol_Model_Api
 {
     /**
@@ -20,18 +27,13 @@ class Hirale_GAMeasurementProtocol_Model_Api
     public const DM_STALENESS_LIMIT_SECONDS = 72 * 3600 - 600;
 
     /**
-     * gRPC codes worth a queue retry: transient server or network
-     * conditions. Everything else (bad request, auth, missing destination)
-     * cannot succeed on replay and must fail the job immediately.
+     * Seconds allowed for the TCP+TLS handshake and for the whole request.
+     * Both must stay well under the queue's abandoned-claim window (300s on
+     * Maho without pcntl): a handler that outlives it is redelivered while it
+     * is still running, and the event would be posted twice.
      */
-    private const DM_RETRYABLE_CODES = [
-        Code::UNKNOWN,
-        Code::DEADLINE_EXCEEDED,
-        Code::RESOURCE_EXHAUSTED,
-        Code::ABORTED,
-        Code::INTERNAL,
-        Code::UNAVAILABLE,
-    ];
+    public const MP_CONNECT_TIMEOUT_SECONDS = 5;
+    public const MP_TIMEOUT_SECONDS = 15;
 
     private ?Hirale_GAMeasurementProtocol_Helper_Data $_helper = null;
 
@@ -39,6 +41,7 @@ class Hirale_GAMeasurementProtocol_Model_Api
 
     private ?Hirale_GAMeasurementProtocol_Model_DataManager_ClientFactory $_clientFactory = null;
 
+    #[\Maho\Config\MessageHandler]
     public function __invoke(Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage $message): void
     {
         try {
@@ -100,7 +103,25 @@ class Hirale_GAMeasurementProtocol_Model_Api
         }
 
         if ($result['curl_errno'] !== 0) {
+            // Transport failure — a timeout included. Retryable by design:
+            // Google may or may not have received the body, and a plain
+            // exception sends it back through the queue's backoff.
             throw new RuntimeException($result['curl_error']);
+        }
+
+        // Measurement Protocol answers 2xx even for payloads it silently
+        // drops, so a 4xx is a request-level defect — wrong measurement id or
+        // api secret, malformed body — that a replay reproduces exactly.
+        if ($result['http_code'] >= 400 && $result['http_code'] < 500) {
+            throw new UnrecoverableMessageHandlingException(
+                sprintf('Measurement Protocol rejected the request: HTTP %d', $result['http_code']),
+            );
+        }
+
+        if ($result['http_code'] >= 500) {
+            throw new RuntimeException(
+                sprintf('Measurement Protocol request failed: HTTP %d', $result['http_code']),
+            );
         }
     }
 
@@ -109,6 +130,17 @@ class Hirale_GAMeasurementProtocol_Model_Api
      */
     protected function _sendViaDataManager(array $payload, int $storeId, bool $shouldLogDebugEvent): void
     {
+        if (!$this->_isDataManagerAvailable()) {
+            // Same verdict the admin save-time validation gives, reached from
+            // the other direction: a store that switched transports without
+            // installing the package. No amount of retrying installs it.
+            throw new UnrecoverableMessageHandlingException(sprintf(
+                'The Data Manager API transport requires the "%s" package. Run: composer require %s',
+                Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester::PACKAGE,
+                Hirale_GAMeasurementProtocol_Model_DataManager_DestinationTester::PACKAGE,
+            ));
+        }
+
         $helper = $this->_getHelper();
 
         $timestampMicros = $payload['timestamp_micros'] ?? null;
@@ -174,6 +206,17 @@ class Hirale_GAMeasurementProtocol_Model_Api
     }
 
     /**
+     * Whether the optional Data Manager client is installed. ::class is a
+     * compile-time string, so this asks the autoloader without ever forcing
+     * the class to resolve. Overridable so the suite can simulate a store
+     * that never installed it.
+     */
+    protected function _isDataManagerAvailable(): bool
+    {
+        return class_exists(IngestEventsRequest::class);
+    }
+
+    /**
      * Performs the ingest call. Factored out so unit tests can override
      * without hitting the network (mirrors _postToGa4).
      */
@@ -184,6 +227,30 @@ class Hirale_GAMeasurementProtocol_Model_Api
         return $this->_getClientFactory()->create($serviceAccountKey)->ingestEvents($request);
     }
 
+    /**
+     * gRPC codes worth a queue retry: transient server or network conditions.
+     * Everything else (bad request, auth, missing destination) cannot succeed
+     * on replay and must fail the job immediately.
+     *
+     * Built on demand rather than as a class constant: a constant expression
+     * naming Google\Rpc\Code is evaluated when the class is instantiated, so
+     * as a constant it made the whole handler — Measurement Protocol included
+     * — unloadable on a store without the optional Data Manager package.
+     *
+     * @return list<int>
+     */
+    protected function _retryableDataManagerCodes(): array
+    {
+        return [
+            Code::UNKNOWN,
+            Code::DEADLINE_EXCEEDED,
+            Code::RESOURCE_EXHAUSTED,
+            Code::ABORTED,
+            Code::INTERNAL,
+            Code::UNAVAILABLE,
+        ];
+    }
+
     protected function _handleApiException(ApiException $e): never
     {
         $message = sprintf(
@@ -192,7 +259,7 @@ class Hirale_GAMeasurementProtocol_Model_Api
             (string) ($e->getBasicMessage() ?: $e->getMessage()),
         );
 
-        if (in_array($e->getCode(), self::DM_RETRYABLE_CODES, true)) {
+        if (in_array($e->getCode(), $this->_retryableDataManagerCodes(), true)) {
             throw new RuntimeException($message, 0, $e);
         }
 
@@ -213,6 +280,8 @@ class Hirale_GAMeasurementProtocol_Model_Api
             CURLOPT_POSTFIELDS => $body,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_CONNECTTIMEOUT => self::MP_CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_TIMEOUT => self::MP_TIMEOUT_SECONDS,
         ]);
         curl_exec($ch);
         $result = [

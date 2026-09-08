@@ -34,7 +34,7 @@ class UrlHelperStub
     }
 }
 
-class CoreHelperStub
+class CoreHelperStub extends \Mage_Core_Helper_Abstract
 {
     public bool $devAllowed = false;
 
@@ -107,6 +107,35 @@ class RequestStub
     /** @var array<string, mixed> */
     public array $params = [];
 
+    public string $moduleName = '';
+    public string $controllerName = '';
+    public string $actionName = '';
+
+    /** Route the observer resolves as "<module>_<controller>_<action>". */
+    public function setRoute(string $module, string $controller, string $action): self
+    {
+        $this->moduleName = $module;
+        $this->controllerName = $controller;
+        $this->actionName = $action;
+
+        return $this;
+    }
+
+    public function getModuleName(): string
+    {
+        return $this->moduleName;
+    }
+
+    public function getControllerName(): string
+    {
+        return $this->controllerName;
+    }
+
+    public function getActionName(): string
+    {
+        return $this->actionName;
+    }
+
     /**
      * @return mixed
      */
@@ -127,6 +156,20 @@ class RequestStub
 class ResponseStub
 {
     public ?string $redirect = null;
+
+    public int $httpResponseCode = 200;
+
+    public string $body = '<!DOCTYPE html><html><body>ok</body></html>';
+
+    public function getHttpResponseCode(): int
+    {
+        return $this->httpResponseCode;
+    }
+
+    public function getBody(): string
+    {
+        return $this->body;
+    }
 
     public function setRedirect(string $url, int $code = 302): self
     {
@@ -214,12 +257,26 @@ class AppStub
 
     public StoreStub $currentStore;
     public RequestStub $request;
+    public ResponseStub $response;
+    public LayoutStub $layout;
 
     public function __construct(int $currentStoreId = 1)
     {
         $this->currentStore = new StoreStub($currentStoreId);
         $this->stores[$currentStoreId] = $this->currentStore;
         $this->request = new RequestStub();
+        $this->response = new ResponseStub();
+        $this->layout = new LayoutStub();
+    }
+
+    public function getResponse(): ResponseStub
+    {
+        return $this->response;
+    }
+
+    public function getLayout(): LayoutStub
+    {
+        return $this->layout;
     }
 
     public function getStore(?int $storeId = null): StoreStub
@@ -402,6 +459,11 @@ class QuoteStub
 
 class CheckoutSessionStub
 {
+    public ?OrderStub $lastRealOrder = null;
+
+    /** @var array<string, mixed> */
+    public array $data = [];
+
     public function __construct(private QuoteStub $quote)
     {
     }
@@ -409,6 +471,73 @@ class CheckoutSessionStub
     public function getQuote(): QuoteStub
     {
         return $this->quote;
+    }
+
+    public function getLastRealOrder(): ?OrderStub
+    {
+        return $this->lastRealOrder;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getData(string $key)
+    {
+        return $this->data[$key] ?? null;
+    }
+
+    public function setData(string $key, $value): self
+    {
+        $this->data[$key] = $value;
+
+        return $this;
+    }
+}
+
+class HeadBlockStub
+{
+    public function __construct(public string $title = 'Test page') {}
+
+    public function getTitle(): string
+    {
+        return $this->title;
+    }
+}
+
+class LayoutStub
+{
+    /** @var array<string, object> */
+    public array $blocks;
+
+    /** @param array<string, object> $blocks */
+    public function __construct(array $blocks = [])
+    {
+        $this->blocks = $blocks !== [] ? $blocks : ['head' => new HeadBlockStub()];
+    }
+
+    public function getBlock(string $name): object|false
+    {
+        return $this->blocks[$name] ?? false;
+    }
+}
+
+/**
+ * Helper whose first call from any observer entry point explodes, so the
+ * guard around each entry point can be exercised without contriving a broken
+ * payload.
+ */
+class ThrowingHelperStub extends \Hirale_GAMeasurementProtocol_Helper_Data
+{
+    #[\Override]
+    public function isMeasurementEnabled(?int $storeId = null): bool
+    {
+        throw new \TypeError('observer payload build exploded');
+    }
+
+    #[\Override]
+    public function getClientId(): string
+    {
+        throw new \TypeError('observer payload build exploded');
     }
 }
 

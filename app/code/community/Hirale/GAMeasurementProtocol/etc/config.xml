@@ -2,7 +2,7 @@
 <config>
     <modules>
         <Hirale_GAMeasurementProtocol>
-            <version>3.0.0</version>
+            <version>4.0.0</version>
         </Hirale_GAMeasurementProtocol>
     </modules>
     <default>
@@ -47,6 +47,18 @@
                 </observers>
             </sales_order_payment_refund>
         </events>
+        <!--
+            Maho core queue: GA4 upload is one outbound HTTP call per message, so
+            the analytics queue is routed to the catch-all "slow" pool and never
+            competes with the resident "fast" pool (order mail and friends).
+            A host can retarget it from its own config.xml or local.xml.
+            Ignored by hirale/queue on OpenMage, which reads <hirale_queue> below.
+        -->
+        <queue>
+            <routing>
+                <analytics>slow</analytics>
+            </routing>
+        </queue>
         <hirale_queue>
             <handlers>
                 <Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>gameasurementprotocol/api</Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage>
@@ -103,6 +115,7 @@
             <sales_quote_item_delete_after>
                 <observers>
                     <gameasurementprotocol_sales_quote_item_delete_after>
+                        <type>singleton</type>
                         <class>gameasurementprotocol/observer</class>
                         <method>addOrRemoveItemsFromCart</method>
                     </gameasurementprotocol_sales_quote_item_delete_after>
@@ -119,20 +132,20 @@
             </wishlist_product_add_after>
             <customer_register_success>
                 <observers>
-                    <metaconversions_customer_register_success>
+                    <gameasurementprotocol_customer_register_success>
                         <type>singleton</type>
                         <class>gameasurementprotocol/observer</class>
                         <method>signUp</method>
-                    </metaconversions_customer_register_success>
+                    </gameasurementprotocol_customer_register_success>
                 </observers>
             </customer_register_success>
             <customer_login>
                 <observers>
-                    <metaconversions_customer_login>
+                    <gameasurementprotocol_customer_login>
                         <type>singleton</type>
                         <class>gameasurementprotocol/observer</class>
                         <method>login</method>
-                    </metaconversions_customer_login>
+                    </gameasurementprotocol_customer_login>
                 </observers>
             </customer_login>
             <sales_order_place_after>
@@ -148,7 +161,7 @@
                 <observers>
                     <gameasurementprotocol_core_app_run_after>
                         <type>singleton</type>
-                        <class>Hirale_GAMeasurementProtocol_Model_Observer</class>
+                        <class>gameasurementprotocol/observer</class>
                         <method>dispatchRouteEvent</method>
                     </gameasurementprotocol_core_app_run_after>
                 </observers>

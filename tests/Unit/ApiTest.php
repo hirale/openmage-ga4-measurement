@@ -8,6 +8,7 @@ use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\RecordingApi;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 class ApiTest extends TestCase
 {
@@ -157,5 +158,169 @@ class ApiTest extends TestCase
         self::assertNotEmpty(\Mage::$logs);
         self::assertSame('ga_store_1.log', \Mage::$logs[0]['file']);
         self::assertStringContainsString('HTTP 204', (string) \Mage::$logs[0]['message']);
+    }
+
+    public function testInvokeFailsUnrecoverablyOnMeasurementProtocol4xx(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'wrong-secret';
+
+        $api = new RecordingApi();
+        $api->nextResponse = ['http_code' => 401, 'curl_errno' => 0, 'curl_error' => ''];
+
+        // Both platforms honour this exception by failing the job instead of
+        // retrying: a rejected request replays into the same rejection.
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessage('HTTP 401');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
+    }
+
+    public function testInvokeRetriesOnMeasurementProtocol5xx(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        $api->nextResponse = ['http_code' => 503, 'curl_errno' => 0, 'curl_error' => ''];
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('HTTP 503');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
+    }
+
+    public function testInvokeAcceptsMeasurementProtocolSuccessCodes(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        $api->nextResponse = ['http_code' => 204, 'curl_errno' => 0, 'curl_error' => ''];
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'view_item', 'params' => []]]],
+            storeId: 1,
+        ));
+
+        self::assertCount(1, $api->posts);
+    }
+
+    public function testMeasurementProtocolCurlTimeoutsAreBoundedWellBelowTheClaimWindow(): void
+    {
+        // A handler that outlives the queue's abandoned-claim window (300s on
+        // Maho without pcntl) is redelivered while still running, and the
+        // event goes out twice.
+        self::assertLessThan(300, \Hirale_GAMeasurementProtocol_Model_Api::MP_TIMEOUT_SECONDS);
+        self::assertLessThanOrEqual(
+            \Hirale_GAMeasurementProtocol_Model_Api::MP_TIMEOUT_SECONDS,
+            \Hirale_GAMeasurementProtocol_Model_Api::MP_CONNECT_TIMEOUT_SECONDS,
+        );
+    }
+
+    public function testInvokeTreatsATimeoutAsRetryableNotPermanent(): void
+    {
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+
+        $api = new RecordingApi();
+        // CURLE_OPERATION_TIMEDOUT: Google may or may not have taken the body,
+        // so the message has to go back through the queue's backoff.
+        $api->nextResponse = ['http_code' => 0, 'curl_errno' => 28, 'curl_error' => 'Operation timed out after 15000 ms'];
+
+        try {
+            $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+                events: ['events' => [['name' => 'purchase', 'params' => []]]],
+                storeId: 1,
+            ));
+            self::fail('Expected the timeout to surface as an exception.');
+        } catch (\RuntimeException $e) {
+            self::assertNotInstanceOf(UnrecoverableMessageHandlingException::class, $e);
+            self::assertStringContainsString('timed out', $e->getMessage());
+        }
+    }
+
+    /**
+     * The Data Manager client is optional, so a store that never installed it
+     * must still be able to load and run the handler for the Measurement
+     * Protocol transport.
+     *
+     * Runs in a child process on purpose: by the time this test executes, the
+     * dev-installed protos are already loaded in this one, so an in-process
+     * check would pass no matter what the class does.
+     */
+    public function testHandlerLoadsWithoutTheDataManagerPackage(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $probe = <<<'PHP'
+            <?php
+            // Prepended, so Composer never gets the chance to resolve a class
+            // an MP-only store would not have.
+            spl_autoload_register(static function (string $class): void {
+                if (str_starts_with($class, 'Google\\')) {
+                    echo 'RESOLVED ', $class;
+                    exit(1);
+                }
+            }, true, true);
+
+            require $argv[1] . '/tests/bootstrap.php';
+
+            $api = new Hirale_GAMeasurementProtocol_Model_Api();
+            $api->setHelper(new Hirale_GAMeasurementProtocol_Helper_Data());
+            Mage::$config = ['1' => []];
+            // No measurement id configured, so the MP branch returns before
+            // any network call — this is about reaching it at all.
+            $api(new Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+                events: ['events' => [['name' => 'login', 'params' => []]]],
+                storeId: 1,
+            ));
+            echo 'OK';
+            PHP;
+
+        $probeFile = tempnam(sys_get_temp_dir(), 'ga4probe') . '.php';
+        file_put_contents($probeFile, $probe);
+
+        try {
+            $output = (string) shell_exec(sprintf(
+                '%s %s %s 2>&1',
+                escapeshellarg(PHP_BINARY),
+                escapeshellarg($probeFile),
+                escapeshellarg($root),
+            ));
+        } finally {
+            @unlink($probeFile);
+        }
+
+        self::assertStringContainsString('OK', $output, $output);
+    }
+
+    public function testDataManagerTransportFailsLoudlyWhenThePackageIsMissing(): void
+    {
+        \Mage::$config['1']['google/measurement/transport'] = \Hirale_GAMeasurementProtocol_Helper_Data::TRANSPORT_DATA_MANAGER;
+        \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
+        \Mage::$config['1']['google/measurement/dm_property_id'] = '213025502';
+
+        $api = new class extends \Hirale_GAMeasurementProtocol_Model_Api {
+            #[\Override]
+            protected function _isDataManagerAvailable(): bool
+            {
+                return false;
+            }
+        };
+
+        // Never retryable: no amount of backoff installs a composer package.
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectExceptionMessage('composer require googleads/data-manager');
+
+        $api(new \Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+            events: ['events' => [['name' => 'purchase', 'params' => []]]],
+            storeId: 1,
+        ));
     }
 }

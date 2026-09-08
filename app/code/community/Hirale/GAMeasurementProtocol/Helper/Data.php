@@ -2,13 +2,22 @@
 
 declare(strict_types=1);
 
+use Hirale\Queue\Bus;
+use Maho\Queue\QueueManager;
+
 class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 {
     public const GA4_MEASUREMENT_PROTOCOL_URL = 'https://www.google-analytics.com/mp/collect';
-    public const GTAG_URL = 'https://www.googletagmanager.com/gtag/destination';
 
     public const TRANSPORT_MEASUREMENT_PROTOCOL = 'measurement_protocol';
     public const TRANSPORT_DATA_MANAGER = 'data_manager';
+
+    /** Queue GA4 uploads ride; config.xml routes it off the resident fast pool on Maho. */
+    public const QUEUE_ANALYTICS = 'analytics';
+
+    private const DISPATCHER_MAHO = 'maho';
+    private const DISPATCHER_HIRALE = 'hirale';
+    private const DISPATCHER_NONE = 'none';
 
     private const DEFAULT_LOG_FILE = 'ga_measurement.log';
     private const CACHE_KEY_NULL = '__current__';
@@ -36,6 +45,8 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 
     /** @var array<string, array<string, mixed>|null> */
     private array $_serviceAccountKey = [];
+
+    private ?string $_dispatcher = null;
 
     public function isMeasurementEnabled(?int $storeId = null): bool
     {
@@ -246,6 +257,90 @@ class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
     public function formatPrice($price): float
     {
         return (float) number_format((float) $price, 2, '.', '');
+    }
+
+    public function isQueueEnabled(): bool
+    {
+        return $this->_resolveDispatcher() !== self::DISPATCHER_NONE;
+    }
+
+    /**
+     * Hand one GA4 event envelope to whichever queue backend this install has.
+     * Returns false when there is none, so an observer on the request path
+     * stays silent instead of failing the page it is measuring.
+     *
+     * @param array<string, mixed> $events
+     */
+    public function enqueueMeasurementEvent(array $events, int $storeId, bool $debugMode): bool
+    {
+        $dispatcher = $this->_resolveDispatcher();
+        if ($dispatcher === self::DISPATCHER_NONE) {
+            return false;
+        }
+
+        try {
+            $this->_dispatch($dispatcher, new Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
+                events: $events,
+                storeId: $storeId,
+                debugMode: $debugMode,
+            ));
+
+            return true;
+        } catch (Throwable $e) {
+            Mage::logException($e);
+
+            return false;
+        }
+    }
+
+    /**
+     * Which queue backend this install dispatches through. Maho's core queue
+     * wins when the platform ships it, so a Maho store needs no third-party
+     * queue package at all; hirale/queue remains the OpenMage backend.
+     */
+    private function _resolveDispatcher(): string
+    {
+        // Memoized: a page view can dispatch several event batches, and the
+        // helper is a per-request singleton.
+        if ($this->_dispatcher === null) {
+            $this->_dispatcher = match (true) {
+                $this->_isMahoQueueAvailable() => self::DISPATCHER_MAHO,
+                $this->_isHiraleQueueAvailable() => self::DISPATCHER_HIRALE,
+                default => self::DISPATCHER_NONE,
+            };
+        }
+
+        return $this->_dispatcher;
+    }
+
+    private function _isMahoQueueAvailable(): bool
+    {
+        if (!class_exists(QueueManager::class)) {
+            return false;
+        }
+
+        $core = Mage::helper('core');
+
+        return $core instanceof Mage_Core_Helper_Abstract && $core->isModuleEnabled('Maho_Queue');
+    }
+
+    /** Protected only so the unit suite can simulate an install with no queue package at all. */
+    protected function _isHiraleQueueAvailable(): bool
+    {
+        return class_exists(Bus::class);
+    }
+
+    private function _dispatch(string $dispatcher, object $message): void
+    {
+        if ($dispatcher === self::DISPATCHER_MAHO) {
+            QueueManager::dispatch(message: $message, queue: self::QUEUE_ANALYTICS);
+
+            return;
+        }
+
+        // hirale/queue takes the queue from its own <routing> in config.xml,
+        // which already puts this message class on the analytics queue.
+        Bus::dispatch($message);
     }
 
     private function _cacheKey(?int $storeId): string

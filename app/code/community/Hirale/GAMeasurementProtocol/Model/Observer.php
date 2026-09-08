@@ -1,10 +1,12 @@
 <?php
 
-use Hirale\Queue\Bus;
 use Jaybizzle\CrawlerDetect\CrawlerDetect;
 
 class Hirale_GAMeasurementProtocol_Model_Observer
 {
+    /** Checkout-session key holding the increment id whose purchase was already reported. */
+    public const SESSION_REPORTED_PURCHASE = 'ga_reported_purchase_increment_id';
+
     /**
      * @var Hirale_GAMeasurementProtocol_Helper_Data
      */
@@ -22,6 +24,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     }
 
     public function generateClientId(Varien_Event_Observer $observer)
+    {
+        $this->guard(fn() => $this->_generateClientId($observer));
+    }
+
+    protected function _generateClientId(Varien_Event_Observer $observer)
     {
         $this->helper->getClientId();
     }
@@ -54,6 +61,9 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * and debug flag travel as message fields (not inside the payload), so
      * the handler posts the events body to GA4 exactly as built here.
      *
+     * The helper picks the queue backend; with none installed it declines
+     * quietly and the storefront request is unaffected.
+     *
      * @param array $events
      */
     protected function addToQueue($events, ?int $storeId = null)
@@ -77,11 +87,7 @@ class Hirale_GAMeasurementProtocol_Model_Observer
             }
             unset($event, $params);
 
-            Bus::dispatch(new Hirale_GAMeasurementProtocol_Message_MeasurementEventMessage(
-                events: $events,
-                storeId: (int) $storeId,
-                debugMode: $shouldDebug,
-            ));
+            $this->helper->enqueueMeasurementEvent($events, (int) $storeId, $shouldDebug);
         } catch (Exception $e) {
             Mage::logException($e);
         }
@@ -119,6 +125,71 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     }
 
 
+    /**
+     * Analytics must never break the flow it observes. Every event entry point
+     * runs its body through here, so a payload-building failure is logged and
+     * dropped instead of aborting a cart save, a login or a credit memo.
+     */
+    protected function guard(callable $work): void
+    {
+        try {
+            $work();
+        } catch (Throwable $e) {
+            Mage::logException($e);
+        }
+    }
+
+    /**
+     * Claim the single purchase report for an order, or refuse when it was
+     * already made.
+     *
+     * The success route outlives its first render: successAction clears
+     * lastSuccessQuoteId and redirects on a reload, but last_real_order_id
+     * stays on the session (only clearHelperData() drops it, and that runs
+     * when the next checkout starts). getLastRealOrder() therefore keeps
+     * returning the order, and without this claim every reload would report
+     * the same transaction_id again — GA4 does not de-duplicate key events.
+     *
+     * Maho only. OpenMage runs session_write_close() before core_app_run_after
+     * dispatches, so the mark never reaches storage there and the claim is a
+     * no-op across requests. What actually stops the reload on both platforms
+     * is isRenderedHtmlPage(): a reload of the success page is a 302. This
+     * claim is the second line of defence, not the first.
+     */
+    protected function claimPurchaseReport($order): bool
+    {
+        $incrementId = $order ? (string) $order->getIncrementId() : '';
+        if ($incrementId === '') {
+            return false;
+        }
+
+        $session = Mage::getSingleton('checkout/session');
+        if ((string) $session->getData(self::SESSION_REPORTED_PURCHASE) === $incrementId) {
+            return false;
+        }
+        $session->setData(self::SESSION_REPORTED_PURCHASE, $incrementId);
+
+        return true;
+    }
+
+    /**
+     * Whether the response the visitor received is a rendered storefront page.
+     * A redirect, a JSON endpoint or an error page carries no reliable quote
+     * or order state: reporting from one duplicates events (a reloaded success
+     * page) or invents empty ones (checkout bouncing an empty cart back).
+     *
+     * The doctype is looked for in the whole body, not a leading window: this
+     * gates every route event, so a theme that pushes the doctype past a fixed
+     * offset with a BOM, a comment or whitespace would silently stop all
+     * reporting. The body is already in memory, so scanning it costs nothing
+     * worth optimising.
+     */
+    protected function isRenderedHtmlPage($response): bool
+    {
+        return (int) $response->getHttpResponseCode() === 200
+            && str_contains((string) $response->getBody(), '<!DOCTYPE html');
+    }
+
     protected function getCrawlerDetect()
     {
         if ($this->CrawlerDetect === null) {
@@ -127,6 +198,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         return $this->CrawlerDetect;
     }
     public function addOrRemoveItemsFromCart(Varien_Event_Observer $observer)
+    {
+        $this->guard(fn() => $this->_addOrRemoveItemsFromCart($observer));
+    }
+
+    protected function _addOrRemoveItemsFromCart(Varien_Event_Observer $observer)
     {
         /** @var Mage_Sales_Model_Quote_Item $item */
         $item = $observer->getEvent()->getItem();
@@ -199,6 +275,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function addToWishlist(Varien_Event_Observer $observer)
     {
+        $this->guard(fn() => $this->_addToWishlist($observer));
+    }
+
+    protected function _addToWishlist(Varien_Event_Observer $observer)
+    {
         $items = $observer->getEvent()->getItems();
         if (!$items || count($items) === 0) {
             return;
@@ -234,6 +315,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function signUp(Varien_Event_Observer $observer)
     {
+        $this->guard(fn() => $this->_signUp($observer));
+    }
+
+    protected function _signUp(Varien_Event_Observer $observer)
+    {
         $customer = $observer->getEvent()->getCustomer();
         $storeId = $this->resolveStoreId($customer ? $customer->getStoreId() : null);
         if (!$this->canSend($storeId)) {
@@ -250,6 +336,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
     }
 
     public function login(Varien_Event_Observer $observer)
+    {
+        $this->guard(fn() => $this->_login($observer));
+    }
+
+    protected function _login(Varien_Event_Observer $observer)
     {
         $customer = $observer->getEvent()->getCustomer();
         $storeId = $this->resolveStoreId($customer ? $customer->getStoreId() : null);
@@ -268,11 +359,17 @@ class Hirale_GAMeasurementProtocol_Model_Observer
 
     public function dispatchRouteEvent(Varien_Event_Observer $observer)
     {
+        $this->guard(fn() => $this->_dispatchRouteEvent($observer));
+    }
+
+    protected function _dispatchRouteEvent(Varien_Event_Observer $observer)
+    {
         $request = $observer->getEvent()->getApp()->getRequest();
         $route = $request->getModuleName() . '_' . $request->getControllerName() . '_' . $request->getActionName();
 
         // Purchase events scope to the order's store, not the current
         // storefront store — in a multi-store checkout flow these can differ.
+        $order = null;
         if ($route === 'checkout_onepage_success') {
             $order = Mage::getSingleton('checkout/session')->getLastRealOrder();
             $storeId = $this->resolveStoreId($order ? $order->getStoreId() : null);
@@ -281,6 +378,13 @@ class Hirale_GAMeasurementProtocol_Model_Observer
         }
 
         if (!$this->canSend($storeId)) {
+            return;
+        }
+
+        // Hoisted above the route switch on purpose: every event below reads
+        // quote or order state that only a rendered page can be trusted to
+        // reflect. page_view used to be the only one guarded.
+        if (!$this->isRenderedHtmlPage($observer->getEvent()->getApp()->getResponse())) {
             return;
         }
 
@@ -295,7 +399,9 @@ class Hirale_GAMeasurementProtocol_Model_Observer
                 break;
 
             case 'checkout_onepage_success':
-                $events[] = $this->getPurchaseEvent($currency);
+                if ($this->claimPurchaseReport($order)) {
+                    $events[] = $this->getPurchaseEvent($currency);
+                }
                 break;
 
             case 'checkout_cart_index':
@@ -318,26 +424,16 @@ class Hirale_GAMeasurementProtocol_Model_Observer
                 $events = array_merge($events, $searchEvents);
                 break;
         }
-        $response = $observer->getEvent()->getApp()->getResponse();
-        $body = substr($response->getBody(), 0, 100);
-        $statusCode = $response->getHttpResponseCode();
-        if (strpos($body, '<!DOCTYPE html') !== false && $statusCode == 200) {
-            array_push(
-                $events,
-                [
-                    'name' => 'page_view',
-                    'params' => [
-                        'engagement_time_msec' => 1,
-                        'page_location' => Mage::helper('core/url')->getCurrentUrl(),
-                        'page_title' => Mage::app()->getLayout()->getBlock('head')->getTitle()
-                    ]
-                ]
-            );
-        }
-        if ($events) {
-            $eventData['events'] = $events;
-            $this->addToQueue($eventData, $storeId);
-        }
+        $events[] = [
+            'name' => 'page_view',
+            'params' => [
+                'engagement_time_msec' => 1,
+                'page_location' => Mage::helper('core/url')->getCurrentUrl(),
+                'page_title' => Mage::app()->getLayout()->getBlock('head')->getTitle()
+            ]
+        ];
+        $eventData['events'] = $events;
+        $this->addToQueue($eventData, $storeId);
     }
 
     /**
@@ -347,6 +443,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * client instead of whoever triggered them.
      */
     public function captureOrderClientId(Varien_Event_Observer $observer)
+    {
+        $this->guard(fn() => $this->_captureOrderClientId($observer));
+    }
+
+    protected function _captureOrderClientId(Varien_Event_Observer $observer)
     {
         $order = $observer->getEvent()->getOrder();
         if (!$order || $order->getGaClientId()) {
@@ -373,6 +474,11 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * has to be stable and well-formed.
      */
     public function refund(Varien_Event_Observer $observer)
+    {
+        $this->guard(fn() => $this->_refund($observer));
+    }
+
+    protected function _refund(Varien_Event_Observer $observer)
     {
         $creditmemo = $observer->getEvent()->getCreditmemo();
         $order = $creditmemo ? $creditmemo->getOrder() : null;

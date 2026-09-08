@@ -10,6 +10,8 @@ use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CartItemStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CheckoutSessionStub;
+use HiraleGAMeasurementProtocol\Tests\Support\CustomerStub;
+use HiraleGAMeasurementProtocol\Tests\Support\ThrowingHelperStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CreditmemoItemStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CreditmemoStub;
 use HiraleGAMeasurementProtocol\Tests\Support\GoogleAnalyticsHelperStub;
@@ -270,6 +272,218 @@ class ObserverTest extends TestCase
         self::assertArrayNotHasKey('session_id', $envelope);
         self::assertArrayNotHasKey('user_id', $envelope);
     }
+    private function routeObserver(string $module, string $controller, string $action): \Varien_Event_Observer
+    {
+        \Mage::$app->request->setRoute($module, $controller, $action);
+
+        return new \Varien_Event_Observer(new \Varien_Event(['app' => \Mage::$app]));
+    }
+
+    public function testPurchaseIsReportedOnlyOncePerOrder(): void
+    {
+        $order = new OrderStub(['increment_id' => '100000001', 'store_id' => 1]);
+        $session = new CheckoutSessionStub(new QuoteStub());
+        $session->lastRealOrder = $order;
+        \Mage::$singletons['checkout/session'] = $session;
+
+        $observer = new class extends \Hirale_GAMeasurementProtocol_Model_Observer {
+            #[\Override]
+            protected function getPurchaseEvent($currency)
+            {
+                return ['name' => 'purchase', 'params' => ['transaction_id' => '100000001']];
+            }
+        };
+
+        $event = $this->routeObserver('checkout', 'onepage', 'success');
+        $observer->dispatchRouteEvent($event);
+        $observer->dispatchRouteEvent($event);
+
+        self::assertCount(2, Bus::$dispatches, 'both renders still report the page view');
+        self::assertSame(
+            ['purchase', 'page_view'],
+            array_column(Bus::$dispatches[0]['message']->events['events'], 'name'),
+        );
+        // The reload must not send a second purchase for the same order:
+        // last_real_order_id survives on the session, so getLastRealOrder()
+        // keeps resolving it.
+        self::assertSame(
+            ['page_view'],
+            array_column(Bus::$dispatches[1]['message']->events['events'], 'name'),
+        );
+    }
+
+    public function testPurchaseIsReportedAgainForADifferentOrder(): void
+    {
+        $session = new CheckoutSessionStub(new QuoteStub());
+        $session->lastRealOrder = new OrderStub(['increment_id' => '100000001', 'store_id' => 1]);
+        \Mage::$singletons['checkout/session'] = $session;
+
+        $observer = new class extends \Hirale_GAMeasurementProtocol_Model_Observer {
+            #[\Override]
+            protected function getPurchaseEvent($currency)
+            {
+                return ['name' => 'purchase', 'params' => []];
+            }
+        };
+
+        $observer->dispatchRouteEvent($this->routeObserver('checkout', 'onepage', 'success'));
+        $session->lastRealOrder = new OrderStub(['increment_id' => '100000002', 'store_id' => 1]);
+        $observer->dispatchRouteEvent($this->routeObserver('checkout', 'onepage', 'success'));
+
+        foreach (Bus::$dispatches as $dispatch) {
+            self::assertContains('purchase', array_column($dispatch['message']->events['events'], 'name'));
+        }
+    }
+
+    public function testRedirectResponseReportsNothingAtAll(): void
+    {
+        \Mage::$singletons['checkout/session'] = new CheckoutSessionStub(new QuoteStub());
+        // Empty cart bouncing back to the basket: begin_checkout used to be
+        // built and queued anyway, with a zero value and no items.
+        \Mage::$app->response->httpResponseCode = 302;
+        \Mage::$app->response->body = '';
+
+        (new \Hirale_GAMeasurementProtocol_Model_Observer())
+            ->dispatchRouteEvent($this->routeObserver('checkout', 'onepage', 'index'));
+
+        self::assertSame([], Bus::$dispatches);
+    }
+
+    public function testNonHtmlSuccessResponseReportsNothingAtAll(): void
+    {
+        \Mage::$singletons['checkout/session'] = new CheckoutSessionStub(new QuoteStub());
+        \Mage::$app->response->body = '{"ok":true}';
+
+        (new \Hirale_GAMeasurementProtocol_Model_Observer())
+            ->dispatchRouteEvent($this->routeObserver('checkout', 'cart', 'index'));
+
+        self::assertSame([], Bus::$dispatches);
+    }
+
+    public function testRenderedPageStillReportsPageView(): void
+    {
+        \Mage::$singletons['checkout/session'] = new CheckoutSessionStub(new QuoteStub());
+
+        (new \Hirale_GAMeasurementProtocol_Model_Observer())
+            ->dispatchRouteEvent($this->routeObserver('cms', 'index', 'index'));
+
+        self::assertCount(1, Bus::$dispatches);
+        self::assertSame(
+            ['page_view'],
+            array_column(Bus::$dispatches[0]['message']->events['events'], 'name'),
+        );
+    }
+
+    /**
+     * Analytics must never break the flow it observes: a payload-building
+     * failure is logged and dropped, never propagated into a cart save, a
+     * login or a credit memo.
+     *
+     * @dataProvider guardedEntryPoints
+     */
+    public function testEntryPointSwallowsPayloadFailures(string $method, callable $eventFactory): void
+    {
+        \Mage::$helpers['gameasurementprotocol'] = new ThrowingHelperStub();
+        \Mage::$singletons['checkout/session'] = new CheckoutSessionStub(new QuoteStub(100));
+
+        $observer = new \Hirale_GAMeasurementProtocol_Model_Observer();
+        $observer->{$method}($eventFactory());
+
+        self::assertSame([], Bus::$dispatches);
+        self::assertCount(1, \Mage::$exceptions);
+        self::assertInstanceOf(\TypeError::class, \Mage::$exceptions[0]);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: callable}>
+     */
+    public static function guardedEntryPoints(): array
+    {
+        $bare = static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(new \Varien_Event([]));
+        $customer = static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(
+            new \Varien_Event(['customer' => new CustomerStub(7, 1)]),
+        );
+
+        return [
+            'generateClientId' => ['generateClientId', $bare],
+            'addOrRemoveItemsFromCart' => ['addOrRemoveItemsFromCart', static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(
+                new \Varien_Event(['item' => new CartItemStub(
+                    id: 5,
+                    qty: 1.0,
+                    origQty: null,
+                    basePrice: 10.0,
+                    baseRowTotal: 10.0,
+                    quoteId: 100,
+                    storeId: 1,
+                    isNew: true,
+                    hasChanges: true,
+                    product: new ProductStub(),
+                )]),
+            )],
+            'signUp' => ['signUp', $customer],
+            'login' => ['login', $customer],
+            'addToWishlist' => ['addToWishlist', static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(
+                new \Varien_Event(['items' => [new ProductStub()]]),
+            )],
+            'dispatchRouteEvent' => ['dispatchRouteEvent', static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(
+                new \Varien_Event(['app' => \Mage::$app]),
+            )],
+            'captureOrderClientId' => ['captureOrderClientId', static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(
+                new \Varien_Event(['order' => new OrderStub(['store_id' => 1])]),
+            )],
+            'refund' => ['refund', static fn(): \Varien_Event_Observer => new \Varien_Event_Observer(
+                new \Varien_Event(['creditmemo' => new CreditmemoStub(new OrderStub(['store_id' => 1]), 10.0, [])]),
+            )],
+        ];
+    }
+
+
+    public function testDoctypeBeyondAnyLeadingWindowStillCountsAsARenderedPage(): void
+    {
+        \Mage::$singletons['checkout/session'] = new CheckoutSessionStub(new QuoteStub());
+        // A BOM, a licence comment or plain whitespace can push the doctype
+        // well past the head of the body; this guard now gates every route
+        // event, so a fixed window would silently stop all reporting.
+        \Mage::$app->response->body = str_repeat(' ', 200) . '<!DOCTYPE html><html><body>ok</body></html>';
+
+        (new \Hirale_GAMeasurementProtocol_Model_Observer())
+            ->dispatchRouteEvent($this->routeObserver('cms', 'index', 'index'));
+
+        self::assertCount(1, Bus::$dispatches);
+        self::assertSame(
+            ['page_view'],
+            array_column(Bus::$dispatches[0]['message']->events['events'], 'name'),
+        );
+    }
+
+    public function testReloadedSuccessPageIsBlockedByTheResponseGuardAlone(): void
+    {
+        // OpenMage closes the session before core_app_run_after dispatches, so
+        // claimPurchaseReport() never persists there. The 302 a reloaded
+        // success page returns is what has to stop the duplicate on both
+        // platforms — assert it does, with no mark in play.
+        $session = new CheckoutSessionStub(new QuoteStub());
+        $session->lastRealOrder = new OrderStub(['increment_id' => '100000001', 'store_id' => 1]);
+        \Mage::$singletons['checkout/session'] = $session;
+        \Mage::$app->response->httpResponseCode = 302;
+        \Mage::$app->response->body = '';
+
+        $observer = new class extends \Hirale_GAMeasurementProtocol_Model_Observer {
+            #[\Override]
+            protected function getPurchaseEvent($currency)
+            {
+                return ['name' => 'purchase', 'params' => []];
+            }
+        };
+        $observer->dispatchRouteEvent($this->routeObserver('checkout', 'onepage', 'success'));
+
+        self::assertSame([], Bus::$dispatches);
+        self::assertNull(
+            $session->getData(\Hirale_GAMeasurementProtocol_Model_Observer::SESSION_REPORTED_PURCHASE),
+            'the guard must hold before the claim is ever consulted',
+        );
+    }
+
 }
 
 class ObserverAccessor extends \Hirale_GAMeasurementProtocol_Model_Observer
