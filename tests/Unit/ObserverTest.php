@@ -437,6 +437,53 @@ class ObserverTest extends TestCase
         ];
     }
 
+
+    public function testDoctypeBeyondAnyLeadingWindowStillCountsAsARenderedPage(): void
+    {
+        \Mage::$singletons['checkout/session'] = new CheckoutSessionStub(new QuoteStub());
+        // A BOM, a licence comment or plain whitespace can push the doctype
+        // well past the head of the body; this guard now gates every route
+        // event, so a fixed window would silently stop all reporting.
+        \Mage::$app->response->body = str_repeat(' ', 200) . '<!DOCTYPE html><html><body>ok</body></html>';
+
+        (new \Hirale_GAMeasurementProtocol_Model_Observer())
+            ->dispatchRouteEvent($this->routeObserver('cms', 'index', 'index'));
+
+        self::assertCount(1, Bus::$dispatches);
+        self::assertSame(
+            ['page_view'],
+            array_column(Bus::$dispatches[0]['message']->events['events'], 'name'),
+        );
+    }
+
+    public function testReloadedSuccessPageIsBlockedByTheResponseGuardAlone(): void
+    {
+        // OpenMage closes the session before core_app_run_after dispatches, so
+        // claimPurchaseReport() never persists there. The 302 a reloaded
+        // success page returns is what has to stop the duplicate on both
+        // platforms — assert it does, with no mark in play.
+        $session = new CheckoutSessionStub(new QuoteStub());
+        $session->lastRealOrder = new OrderStub(['increment_id' => '100000001', 'store_id' => 1]);
+        \Mage::$singletons['checkout/session'] = $session;
+        \Mage::$app->response->httpResponseCode = 302;
+        \Mage::$app->response->body = '';
+
+        $observer = new class extends \Hirale_GAMeasurementProtocol_Model_Observer {
+            #[\Override]
+            protected function getPurchaseEvent($currency)
+            {
+                return ['name' => 'purchase', 'params' => []];
+            }
+        };
+        $observer->dispatchRouteEvent($this->routeObserver('checkout', 'onepage', 'success'));
+
+        self::assertSame([], Bus::$dispatches);
+        self::assertNull(
+            $session->getData(\Hirale_GAMeasurementProtocol_Model_Observer::SESSION_REPORTED_PURCHASE),
+            'the guard must hold before the claim is ever consulted',
+        );
+    }
+
 }
 
 class ObserverAccessor extends \Hirale_GAMeasurementProtocol_Model_Observer

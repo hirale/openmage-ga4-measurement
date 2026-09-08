@@ -149,6 +149,12 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * when the next checkout starts). getLastRealOrder() therefore keeps
      * returning the order, and without this claim every reload would report
      * the same transaction_id again — GA4 does not de-duplicate key events.
+     *
+     * Maho only. OpenMage runs session_write_close() before core_app_run_after
+     * dispatches, so the mark never reaches storage there and the claim is a
+     * no-op across requests. What actually stops the reload on both platforms
+     * is isRenderedHtmlPage(): a reload of the success page is a 302. This
+     * claim is the second line of defence, not the first.
      */
     protected function claimPurchaseReport($order): bool
     {
@@ -171,11 +177,17 @@ class Hirale_GAMeasurementProtocol_Model_Observer
      * A redirect, a JSON endpoint or an error page carries no reliable quote
      * or order state: reporting from one duplicates events (a reloaded success
      * page) or invents empty ones (checkout bouncing an empty cart back).
+     *
+     * The doctype is looked for in the whole body, not a leading window: this
+     * gates every route event, so a theme that pushes the doctype past a fixed
+     * offset with a BOM, a comment or whitespace would silently stop all
+     * reporting. The body is already in memory, so scanning it costs nothing
+     * worth optimising.
      */
     protected function isRenderedHtmlPage($response): bool
     {
         return (int) $response->getHttpResponseCode() === 200
-            && str_contains(substr((string) $response->getBody(), 0, 100), '<!DOCTYPE html');
+            && str_contains((string) $response->getBody(), '<!DOCTYPE html');
     }
 
     protected function getCrawlerDetect()

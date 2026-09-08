@@ -122,6 +122,20 @@ pool that carries order mail. A host can retarget it from its own `config.xml`
 or `local.xml`. On OpenMage the same queue name is declared under
 `<hirale_queue><routing>` and has to exist in that module's configuration.
 
+### Event reporting rules
+
+- Route events (`page_view`, `purchase`, `begin_checkout`, `view_cart`,
+  `view_item`, `view_item_list`, `search`) are reported only from a rendered
+  `200` HTML response. A redirect, a JSON endpoint or an error page reports
+  nothing — an empty cart bounced back from checkout is not a `begin_checkout`.
+- `purchase` is reported once per order. A reloaded success page returns a
+  redirect, which the rule above already stops; on Maho a mark on the checkout
+  session backs that up. **On OpenMage that mark is not persisted** — the
+  platform closes the session before `core_app_run_after` dispatches — so there
+  the redirect rule is the only thing preventing a duplicate.
+- An observer that fails while building a payload logs and gives up. It never
+  interrupts the action it is measuring: a cart save, a login, a credit memo.
+
 ### Transport semantics
 
 - The transport is store-view scoped: different stores can post to MP and Data Manager side by side from the same queue consumer.
