@@ -62,4 +62,32 @@ class PackageMetadataTest extends TestCase
             'Maho compiles this attribute into vendor/composer/maho_attributes.php at dump-autoload time',
         );
     }
+
+    public function testApiSecretIsStoredEncrypted(): void
+    {
+        $xml = simplexml_load_file(__DIR__ . '/../../app/code/community/Hirale/GAMeasurementProtocol/etc/system.xml');
+
+        self::assertNotFalse($xml);
+        $field = $xml->sections->google->groups->measurement->fields->api_secret;
+
+        // The core backend encrypts on save and decrypts for the form; the
+        // module must not grow its own crypto for this.
+        self::assertSame('adminhtml/system_config_backend_encrypted', (string) $field->backend_model);
+        self::assertSame('obscure', (string) $field->frontend_type);
+    }
+
+    public function testModuleVersionMatchesTheUpgradeScriptItShipsWith(): void
+    {
+        $xml = simplexml_load_file(__DIR__ . '/../../app/code/community/Hirale/GAMeasurementProtocol/etc/config.xml');
+
+        self::assertNotFalse($xml);
+        $version = (string) $xml->modules->Hirale_GAMeasurementProtocol->version;
+
+        self::assertSame('4.1.0', $version);
+        self::assertFileExists(sprintf(
+            '%s/../../app/code/community/Hirale/GAMeasurementProtocol/sql/gameasurementprotocol_setup/upgrade-4.0.0-%s.php',
+            __DIR__,
+            $version,
+        ));
+    }
 }

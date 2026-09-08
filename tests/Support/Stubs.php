@@ -54,7 +54,10 @@ class CoreHelperStub extends \Mage_Core_Helper_Abstract
 
     /**
      * Mirrors the platform behavior closely enough for tests: decrypting a
-     * value that was never encrypted yields garbage, not the input.
+     * value that was never encrypted yields garbage, not the input. The
+     * garbage is raw bytes rather than hex, because that is what a real failed
+     * decryption produces — and the api_secret fallback decides on exactly
+     * that difference.
      */
     public function decrypt(?string $value): string
     {
@@ -65,7 +68,7 @@ class CoreHelperStub extends \Mage_Core_Helper_Abstract
             return (string) base64_decode(substr($value, 4), true);
         }
 
-        return md5($value);
+        return md5($value, true);
     }
 }
 
@@ -491,6 +494,122 @@ class CheckoutSessionStub
         $this->data[$key] = $value;
 
         return $this;
+    }
+}
+
+/**
+ * Minimal replica of the setup-script contract: a Magento 1 upgrade script is
+ * an imperative PHP file evaluated with $this bound to the setup resource, so
+ * running one under test means including it from an object that answers the
+ * handful of methods it uses.
+ */
+/**
+ * What an admin save leaves in core_config_data for an encrypted field —
+ * matches CoreHelperStub::encrypt(), so fixtures read like a migrated store.
+ */
+final class EncryptedConfigValue
+{
+    public static function of(string $plain): string
+    {
+        return 'enc:' . base64_encode($plain);
+    }
+}
+
+class SetupStub
+{
+    public bool $started = false;
+    public bool $ended = false;
+
+    public function __construct(public SetupConnectionStub $connection)
+    {
+    }
+
+    public function startSetup(): self
+    {
+        $this->started = true;
+
+        return $this;
+    }
+
+    public function endSetup(): self
+    {
+        $this->ended = true;
+
+        return $this;
+    }
+
+    public function getConnection(): SetupConnectionStub
+    {
+        return $this->connection;
+    }
+
+    public function getTable(string $alias): string
+    {
+        return str_replace('/', '_', $alias);
+    }
+
+    public function run(string $scriptPath): void
+    {
+        require $scriptPath;
+    }
+}
+
+class SetupSelectStub
+{
+    /** @var list<array{0:string,1:mixed}> */
+    public array $where = [];
+
+    /** @var array{0:string,1:list<string>}|null */
+    public ?array $from = null;
+
+    /** @param list<string> $columns */
+    public function from(string $table, array $columns): self
+    {
+        $this->from = [$table, $columns];
+
+        return $this;
+    }
+
+    public function where(string $condition, mixed $value = null): self
+    {
+        $this->where[] = [$condition, $value];
+
+        return $this;
+    }
+}
+
+class SetupConnectionStub
+{
+    /** @var list<array{table:string,bind:array<string,mixed>,where:array<string,mixed>}> */
+    public array $updates = [];
+
+    public ?SetupSelectStub $lastSelect = null;
+
+    /** @param list<array<string, mixed>> $rows */
+    public function __construct(private array $rows = [])
+    {
+    }
+
+    public function select(): SetupSelectStub
+    {
+        return $this->lastSelect = new SetupSelectStub();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function fetchAll(SetupSelectStub $select): array
+    {
+        return $this->rows;
+    }
+
+    /**
+     * @param array<string, mixed> $bind
+     * @param array<string, mixed> $where
+     */
+    public function update(string $table, array $bind, array $where): int
+    {
+        $this->updates[] = ['table' => $table, 'bind' => $bind, 'where' => $where];
+
+        return 1;
     }
 }
 

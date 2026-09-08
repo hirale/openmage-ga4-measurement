@@ -7,6 +7,7 @@ namespace HiraleGAMeasurementProtocol\Tests\Unit;
 use Hirale\Queue\Bus;
 use HiraleGAMeasurementProtocol\Tests\Support\AppStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
+use HiraleGAMeasurementProtocol\Tests\Support\EncryptedConfigValue;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CartItemStub;
 use HiraleGAMeasurementProtocol\Tests\Support\CheckoutSessionStub;
@@ -42,10 +43,10 @@ class ObserverTest extends TestCase
         \Mage::$config = ['__null__' => [], '1' => [], '7' => []];
         \Mage::$config['1']['google/measurement/enabled'] = '1';
         \Mage::$config['1']['google/measurement/measurement_id'] = 'G-STORE1';
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-1';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-1');
         \Mage::$config['7']['google/measurement/enabled'] = '1';
         \Mage::$config['7']['google/measurement/measurement_id'] = 'G-STORE7';
-        \Mage::$config['7']['google/measurement/api_secret'] = 'secret-7';
+        \Mage::$config['7']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-7');
     }
 
     protected function tearDown(): void

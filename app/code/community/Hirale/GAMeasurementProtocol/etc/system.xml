@@ -54,7 +54,8 @@
                         </measurement_id>
                         <api_secret translate="label comment">
                             <label>API Secret</label>
-                            <frontend_type>text</frontend_type>
+                            <frontend_type>obscure</frontend_type>
+                            <backend_model>adminhtml/system_config_backend_encrypted</backend_model>
                             <sort_order>30</sort_order>
                             <show_in_default>1</show_in_default>
                             <show_in_website>1</show_in_website>
@@ -63,7 +64,7 @@
                                 <enabled>1</enabled>
                                 <transport>measurement_protocol</transport>
                             </depends>
-                            <comment><![CDATA[Measurement Protocol only. Created in GA Admin > Data Streams > Measurement Protocol API secrets.]]></comment>
+                            <comment><![CDATA[Measurement Protocol only. Created in GA Admin > Data Streams > Measurement Protocol API secrets. Stored encrypted; shown obscured after save.]]></comment>
                         </api_secret>
                         <dm_property_id translate="label comment">
                             <label>GA4 Property ID</label>

@@ -6,6 +6,7 @@ namespace HiraleGAMeasurementProtocol\Tests\Unit;
 
 use Hirale\Queue\Bus;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreHelperStub;
+use HiraleGAMeasurementProtocol\Tests\Support\EncryptedConfigValue;
 use HiraleGAMeasurementProtocol\Tests\Support\CoreSessionStub;
 use Maho\Queue\QueueManager;
 use PHPUnit\Framework\TestCase;
@@ -69,8 +70,8 @@ class HelperDataTest extends TestCase
 
     public function testGetApiSecretIsStoreScoped(): void
     {
-        \Mage::$config['1']['google/measurement/api_secret'] = 'secret-A';
-        \Mage::$config['2']['google/measurement/api_secret'] = 'secret-B';
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-A');
+        \Mage::$config['2']['google/measurement/api_secret'] = EncryptedConfigValue::of('secret-B');
 
         $helper = new \Hirale_GAMeasurementProtocol_Helper_Data();
 
@@ -335,5 +336,46 @@ class HelperDataTest extends TestCase
         self::assertFalse($helper->enqueueMeasurementEvent(['events' => []], 1, false));
         self::assertCount(1, \Mage::$exceptions);
         self::assertSame('queue table is gone', \Mage::$exceptions[0]->getMessage());
+    }
+
+    public function testGetApiSecretDecryptsTheStoredValue(): void
+    {
+        \Mage::$config['1']['google/measurement/api_secret'] = EncryptedConfigValue::of('mp-secret-1');
+
+        self::assertSame('mp-secret-1', (new \Hirale_GAMeasurementProtocol_Helper_Data())->getApiSecret(1));
+        self::assertSame([], \Mage::$logs, 'a decryptable value must not trigger the plaintext warning');
+    }
+
+    public function testGetApiSecretAcceptsAPlainStoredValueWithAForcedWarning(): void
+    {
+        // A store whose 4.1.0 upgrade never ran, or a direct DB write.
+        \Mage::$config['1']['google/measurement/api_secret'] = 'legacy-plain-secret';
+
+        self::assertSame('legacy-plain-secret', (new \Hirale_GAMeasurementProtocol_Helper_Data())->getApiSecret(1));
+        self::assertCount(1, \Mage::$logs);
+        self::assertStringContainsString('stored unencrypted', (string) \Mage::$logs[0]['message']);
+    }
+
+    public function testGetApiSecretReturnsNullWhenNeitherFormIsPlausible(): void
+    {
+        // Decryption yields binary garbage and the stored value cannot be a
+        // secret either — carrying whitespace rules it out.
+        \Mage::$config['1']['google/measurement/api_secret'] = "not a secret\tat all";
+
+        self::assertNull((new \Hirale_GAMeasurementProtocol_Helper_Data())->getApiSecret(1));
+        self::assertSame([], \Mage::$logs);
+    }
+
+    public function testGetApiSecretReturnsNullWhenUnconfigured(): void
+    {
+        self::assertNull((new \Hirale_GAMeasurementProtocol_Helper_Data())->getApiSecret(1));
+    }
+
+    public function testIsPlausibleApiSecretRejectsWhatASecretCannotBe(): void
+    {
+        self::assertTrue(\Hirale_GAMeasurementProtocol_Helper_Data::isPlausibleApiSecret('aBc123_-xyz'));
+        self::assertFalse(\Hirale_GAMeasurementProtocol_Helper_Data::isPlausibleApiSecret(''));
+        self::assertFalse(\Hirale_GAMeasurementProtocol_Helper_Data::isPlausibleApiSecret('has space'));
+        self::assertFalse(\Hirale_GAMeasurementProtocol_Helper_Data::isPlausibleApiSecret("bin\x00ary"));
     }
 }
