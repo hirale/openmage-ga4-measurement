@@ -115,6 +115,7 @@
             <sales_quote_item_delete_after>
                 <observers>
                     <gameasurementprotocol_sales_quote_item_delete_after>
+                        <type>singleton</type>
                         <class>gameasurementprotocol/observer</class>
                         <method>addOrRemoveItemsFromCart</method>
                     </gameasurementprotocol_sales_quote_item_delete_after>
@@ -131,20 +132,20 @@
             </wishlist_product_add_after>
             <customer_register_success>
                 <observers>
-                    <metaconversions_customer_register_success>
+                    <gameasurementprotocol_customer_register_success>
                         <type>singleton</type>
                         <class>gameasurementprotocol/observer</class>
                         <method>signUp</method>
-                    </metaconversions_customer_register_success>
+                    </gameasurementprotocol_customer_register_success>
                 </observers>
             </customer_register_success>
             <customer_login>
                 <observers>
-                    <metaconversions_customer_login>
+                    <gameasurementprotocol_customer_login>
                         <type>singleton</type>
                         <class>gameasurementprotocol/observer</class>
                         <method>login</method>
-                    </metaconversions_customer_login>
+                    </gameasurementprotocol_customer_login>
                 </observers>
             </customer_login>
             <sales_order_place_after>
@@ -160,7 +161,7 @@
                 <observers>
                     <gameasurementprotocol_core_app_run_after>
                         <type>singleton</type>
-                        <class>Hirale_GAMeasurementProtocol_Model_Observer</class>
+                        <class>gameasurementprotocol/observer</class>
                         <method>dispatchRouteEvent</method>
                     </gameasurementprotocol_core_app_run_after>
                 </observers>

@@ -8,7 +8,6 @@ use Maho\Queue\QueueManager;
 class Hirale_GAMeasurementProtocol_Helper_Data extends Mage_Core_Helper_Abstract
 {
     public const GA4_MEASUREMENT_PROTOCOL_URL = 'https://www.google-analytics.com/mp/collect';
-    public const GTAG_URL = 'https://www.googletagmanager.com/gtag/destination';
 
     public const TRANSPORT_MEASUREMENT_PROTOCOL = 'measurement_protocol';
     public const TRANSPORT_DATA_MANAGER = 'data_manager';
